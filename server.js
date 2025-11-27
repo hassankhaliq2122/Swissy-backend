@@ -25,7 +25,7 @@ const server = http.createServer(app);
 // ============================
 // 🌐 Allowed Origins for CORS
 // ============================
-const allowedOrigins = ["http://localhost:3001", "http://localhost:3000","https://swissy-customer.netlify.app"]; // add more if needed
+const allowedOrigins = ["http://localhost:3001", "http://localhost:3000","https://swissy-customer.netlify.app","https://swissy-admin.netlify.app/"]; // add more if needed
 
 app.use(
   cors({
