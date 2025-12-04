@@ -7,7 +7,7 @@ const Invoice = require('../models/Invoice');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
-const { sendOrderAssignmentEmail, sendBulkOrderAssignmentEmail, sendCustomerOrderConfirmation, sendOrderNotification, sendOrderStatusUpdate } = require('../utils/emailService');
+const { sendOrderAssignmentEmail, sendBulkOrderAssignmentEmail } = require('../utils/emailService');
 const router = express.Router();
 
 /* ================================
@@ -172,22 +172,6 @@ router.post('/', protect, upload.array('files', 5), async (req, res) => {
       console.error('⚠️ Failed to send admin notifications (order still created):', notifError);
     }
 
-    // Send email notifications
-    try {
-      // Send confirmation email to customer
-      await sendCustomerOrderConfirmation(req.user, order);
-
-      // Send notification email to all admins
-      const admins = await User.find({ role: 'admin' });
-      for (const admin of admins) {
-        if (admin.email) {
-          await sendOrderNotification(admin.email, order.orderNumber, req.user.name);
-        }
-      }
-    } catch (emailError) {
-      console.error('⚠️ Failed to send emails (order still created):', emailError);
-    }
-
     res.status(201).json({ success: true, order });
 
   } catch (error) {
@@ -246,69 +230,6 @@ router.get('/stats', protect, async (req, res) => {
   } catch (error) {
     console.error('❌ Failed to fetch stats:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch stats' });
-  }
-});
-
-/* ================================
-   UPDATE ORDER (Admin/Employee)
-================================ */
-router.put('/:id', protect, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updates = req.body;
-
-    // Authorization check
-    if (req.user.role !== 'admin' && req.user.role !== 'employee') {
-      return res.status(403).json({ success: false, message: 'Not authorized to update orders' });
-    }
-
-    // Find existing order
-    const order = await Order.findById(id).populate('customerId');
-    if (!order) {
-      return res.status(404).json({ success: false, message: 'Order not found' });
-    }
-
-    // Store old status to check if it changed
-    const oldStatus = order.status;
-
-    // Update order fields
-    Object.keys(updates).forEach(key => {
-      if (updates[key] !== undefined && updates[key] !== null) {
-        order[key] = updates[key];
-      }
-    });
-
-    await order.save();
-
-    // Send email notification if status changed
-    if (oldStatus !== order.status && order.customerId && order.customerId.email) {
-      try {
-        await sendOrderStatusUpdate(order.customerId.email, order.orderNumber, order.status);
-        console.log(`✅ Status update email sent to ${order.customerId.email}`);
-      } catch (emailError) {
-        console.error('⚠️ Failed to send status update email:', emailError);
-      }
-    }
-
-    // Send socket notification to customer
-    const io = req.app.get('io');
-    if (io && order.customerId) {
-      io.to(`user-${order.customerId._id}`).emit('orderUpdate', order);
-    }
-
-    res.json({
-      success: true,
-      order,
-      message: 'Order updated successfully'
-    });
-
-  } catch (error) {
-    console.error('❌ Failed to update order:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update order',
-      error: error.message
-    });
   }
 });
 
