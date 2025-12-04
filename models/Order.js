@@ -32,15 +32,22 @@ const orderSchema = new mongoose.Schema({
     required: true,
   },
 
+  // 🔹 Order Number (auto-generated with type prefix)
   orderNumber: {
     type: String,
     unique: true,
-    required: true,
     default: function () {
       const timestamp = Date.now();
-      const random = Math.floor(Math.random() * 100000);
-      return `ORD-${timestamp}-${random}`;
-    },
+      const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+
+      // Determine prefix based on order type
+      let prefix = 'ORD';
+      if (this.orderType === 'vector') prefix = 'VEC';
+      else if (this.orderType === 'digitizing') prefix = 'DIG';
+      else if (this.orderType === 'patches') prefix = 'PAT';
+
+      return `${prefix}-${timestamp}-${random}`;
+    }
   },
 
   // 🔹 Order Type
@@ -77,16 +84,16 @@ const orderSchema = new mongoose.Schema({
   patchStyle: {
     type: String,
     enum: [
-      'Embroidery Patches','Sublimation Patches','Leather Patches','PVC / Silicon Patches',
-      'Woven Patches','Chenille Patches','Keychains','TPU Patches'
+      'Embroidery Patches', 'Sublimation Patches', 'Leather Patches', 'PVC / Silicon Patches',
+      'Woven Patches', 'Chenille Patches', 'Keychains', 'TPU Patches'
     ],
     required: function () { return this.orderType === 'patches'; },
   },
   patchAmount: { type: Number, min: 0, required: function () { return this.orderType === 'patches'; } },
-  patchUnit: { type: String, enum: ['inches','centimeters','millimeters'], required: function () { return this.orderType === 'patches'; } },
+  patchUnit: { type: String, enum: ['inches', 'centimeters', 'millimeters'], required: function () { return this.orderType === 'patches'; } },
   patchLength: { type: Number, min: 0, required: function () { return this.orderType === 'patches'; } },
   patchWidth: { type: Number, min: 0, required: function () { return this.orderType === 'patches'; } },
-  patchBackingStyle: { type: String, enum: ['Iron On','Sewn On','Peel N Stick','Velcro M+F'], required: function () { return this.orderType === 'patches'; } },
+  patchBackingStyle: { type: String, enum: ['Iron On', 'Sewn On', 'Peel N Stick', 'Velcro M+F'], required: function () { return this.orderType === 'patches'; } },
   patchQuantity: { type: Number, min: 1, required: function () { return this.orderType === 'patches'; } },
   patchAddress: { type: String, required: function () { return this.orderType === 'patches'; } },
 
@@ -97,7 +104,7 @@ const orderSchema = new mongoose.Schema({
   CustomMeasurements: { type: String, required: function () { return this.orderType === 'digitizing'; } },
   length: { type: Number, min: 0, default: 0 },
   width: { type: Number, min: 0, default: 0 },
-  unit: { type: String, enum: ['inches','cm','mm'], default: 'inches' },
+  unit: { type: String, enum: ['inches', 'cm', 'mm'], default: 'inches' },
   customSizes: { type: customSizesSchema, default: () => ({}) },
 
   /* ==========================================
@@ -105,7 +112,61 @@ const orderSchema = new mongoose.Schema({
   ========================================== */
   items: { type: [itemSchema], default: [] },
   files: { type: [fileSchema], default: [] },
-  status: { type: String, enum: ['Pending','In Progress','Completed','Rejected','Cancelled'], default: 'Pending' },
+  status: {
+    type: String,
+    enum: [
+      'In Progress',           // 1
+      'Waiting for Approval',  // 2 (Admin uploaded sample)
+      'Design Approved',       // 3 (Customer approved sample)
+      'In Revision',           // 3 (Customer requested edit)
+      'Manufacturing',         // 4 (Design Approved -> Manufacturing)
+      'Revision Ready',        // 4 (Admin uploaded revision)
+      'Revision Approved',     // 4 (Customer approved revision)
+      'Completed',             // auto
+      'Rejected',              // optional
+      'Cancelled',             // optional
+      'Superseded'             // replaced by revision order
+    ],
+    default: 'In Progress',
+  },
+
+  // 🔹 Customer Approval Status (Feedback)
+  customerApprovalStatus: {
+    type: String,
+    enum: ['pending', 'approved', 'revision_requested'],
+    default: 'pending',
+  },
+
+  // 🔹 Sample Images (Admin Uploads)
+  sampleImages: [
+    {
+      url: String,
+      filename: String,
+      uploadedAt: { type: Date, default: Date.now },
+      type: { type: String, enum: ['initial', 'revision'], default: 'initial' },
+      comments: { type: String, default: '' } // Admin comments
+    }
+  ],
+
+  // 🔹 Revision Tracking
+  parentOrderId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Order',
+    default: null,
+  },
+  isRevision: {
+    type: Boolean,
+    default: false,
+  },
+  revisionNumber: {
+    type: Number,
+    default: 0, // 0 = original, 1 = first revision, 2 = second revision, etc.
+  },
+  revisionReason: {
+    type: String,
+    default: '',
+  },
+
   totalAmount: { type: Number, default: 0 },
   notes: { type: String, default: '' },
   rejectedReason: { type: String, default: '' },
@@ -116,7 +177,7 @@ const orderSchema = new mongoose.Schema({
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   requiredEmployeeRole: {
     type: String,
-    enum: ['vector','digitizing','patches'],
+    enum: ['vector', 'digitizing', 'patches'],
     required: true,
     default: function () { return this.orderType; },
   },

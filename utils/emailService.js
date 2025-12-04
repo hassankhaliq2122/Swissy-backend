@@ -144,7 +144,7 @@ const generateInvoicePDF = async (invoice, customer) => {
   doc.end();
 
   return new Promise((resolve, reject) => {
-    bufferStream.on('finish', () => resolve(bufferStream.getBuffer()));
+    bufferStream.on('finish', () => resolve(bufferStream.getContents()));
     bufferStream.on('error', reject);
   });
 };
@@ -193,3 +193,225 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
     ],
   });
 };
+
+/* ===============================
+   ORDER ASSIGNMENT EMAIL (Single)
+=============================== */
+exports.sendOrderAssignmentEmail = async (employee, order, assignedBy = 'Admin') => {
+  if (!employee.email) {
+    console.warn('⚠️ Employee has no email. Skipping assignment email.');
+    return null;
+  }
+
+  const orderLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/employee/orders`;
+
+  // Get design name based on order type
+  const designName = order.orderType === 'patches'
+    ? (order.patchDesignName || 'N/A')
+    : (order.designName || 'N/A');
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
+      <!-- Header -->
+      <div style="background: #000; padding: 30px; text-align: center;">
+        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">Swiss Project</h1>
+        <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">Order Management System</p>
+      </div>
+
+      <!-- Main Content -->
+      <div style="padding: 40px 30px; background: #f9f9f9;">
+        <h2 style="color: #333; margin-top: 0; font-size: 24px;">🎯 New Order Assigned to You</h2>
+        
+        <p style="color: #555; font-size: 16px; line-height: 1.6;">
+          Hello <strong>${employee.name}</strong>,
+        </p>
+        
+        <p style="color: #555; font-size: 16px; line-height: 1.6;">
+          You have been assigned a new order by <strong>${assignedBy}</strong>. Please review the details below:
+        </p>
+
+        <!-- Order Details Card -->
+        <div style="background: #fff; border-left: 4px solid #FFDD00; padding: 20px; margin: 25px 0; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+          <h3 style="color: #000; margin-top: 0; font-size: 18px;">📋 Order Details</h3>
+          
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600; width: 40%;">Order Number:</td>
+              <td style="padding: 8px 0; color: #333; font-weight: bold;">${order.orderNumber}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Order Type:</td>
+              <td style="padding: 8px 0; color: #333;">
+                <span style="background: #FFDD00; color: #000; padding: 4px 12px; border-radius: 12px; font-weight: 600; font-size: 14px;">
+                  ${order.orderType.toUpperCase()}
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Design Name:</td>
+              <td style="padding: 8px 0; color: #333;">${designName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Customer:</td>
+              <td style="padding: 8px 0; color: #333;">${order.customerId?.name || 'N/A'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Current Status:</td>
+              <td style="padding: 8px 0; color: #333;">
+                <span style="background: #e3f2fd; color: #1976d2; padding: 4px 12px; border-radius: 12px; font-weight: 600; font-size: 14px;">
+                  ${order.status}
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Assigned Date:</td>
+              <td style="padding: 8px 0; color: #333;">${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</td>
+            </tr>
+          </table>
+        </div>
+
+        ${order.notes ? `
+        <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px;">
+          <p style="margin: 0; color: #856404; font-size: 14px;">
+            <strong>📝 Notes:</strong> ${order.notes}
+          </p>
+        </div>
+        ` : ''}
+
+        <!-- Action Button -->
+        <div style="text-align: center; margin: 35px 0 25px 0;">
+          <a href="${orderLink}" 
+             style="background: #FFDD00; color: #000; padding: 14px 35px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold; font-size: 16px; box-shadow: 0 3px 6px rgba(0,0,0,0.16);">
+            View My Orders →
+          </a>
+        </div>
+
+        <p style="color: #666; font-size: 14px; line-height: 1.6; margin-top: 30px;">
+          Please log in to your employee portal to view the complete order details and manage this assignment.
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <div style="background: #000; padding: 20px 30px; text-align: center; color: #999; font-size: 13px;">
+        <p style="margin: 5px 0;">© ${new Date().getFullYear()} Swiss Project. All rights reserved.</p>
+        <p style="margin: 5px 0;">This is an automated notification. Please do not reply to this email.</p>
+      </div>
+    </div>
+  `;
+
+  return await exports.sendEmail({
+    email: employee.email,
+    subject: `🎯 New Order Assigned: ${order.orderNumber}`,
+    html,
+  });
+};
+
+/* ===============================
+   BULK ORDER ASSIGNMENT EMAIL
+=============================== */
+exports.sendBulkOrderAssignmentEmail = async (employee, orders, assignedBy = 'Admin') => {
+  if (!employee.email) {
+    console.warn('⚠️ Employee has no email. Skipping bulk assignment email.');
+    return null;
+  }
+
+  const orderLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/employee/orders`;
+  const orderCount = orders.length;
+
+  // Create order rows for the table
+  const orderRows = orders.map((order, index) => {
+    const designName = order.orderType === 'patches'
+      ? (order.patchDesignName || 'N/A')
+      : (order.designName || 'N/A');
+
+    return `
+      <tr style="${index % 2 === 0 ? 'background: #f9f9f9;' : 'background: #fff;'}">
+        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; text-align: center;">${index + 1}</td>
+        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; font-weight: 600; color: #333;">${order.orderNumber}</td>
+        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0;">
+          <span style="background: #FFDD00; color: #000; padding: 3px 10px; border-radius: 10px; font-size: 12px; font-weight: 600;">
+            ${order.orderType.toUpperCase()}
+          </span>
+        </td>
+        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; color: #555;">${designName}</td>
+        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; color: #555;">${order.customerId?.name || 'N/A'}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 750px; margin: 0 auto; background: #fff;">
+      <!-- Header -->
+      <div style="background: #000; padding: 30px; text-align: center;">
+        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">Swiss Project</h1>
+        <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">Order Management System</p>
+      </div>
+
+      <!-- Main Content -->
+      <div style="padding: 40px 30px; background: #f9f9f9;">
+        <h2 style="color: #333; margin-top: 0; font-size: 24px;">🎯 Multiple Orders Assigned to You</h2>
+        
+        <p style="color: #555; font-size: 16px; line-height: 1.6;">
+          Hello <strong>${employee.name}</strong>,
+        </p>
+        
+        <p style="color: #555; font-size: 16px; line-height: 1.6;">
+          You have been assigned <strong style="color: #FFDD00; background: #000; padding: 3px 10px; border-radius: 4px;">${orderCount}</strong> new orders by <strong>${assignedBy}</strong>.
+        </p>
+
+        <!-- Summary Card -->
+        <div style="background: linear-gradient(135deg, #FFDD00 0%, #FFC700 100%); padding: 25px; margin: 25px 0; border-radius: 8px; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.15);">
+          <h3 style="color: #000; margin: 0 0 10px 0; font-size: 20px;">📦 Assignment Summary</h3>
+          <p style="color: #000; margin: 0; font-size: 36px; font-weight: bold;">${orderCount}</p>
+          <p style="color: #000; margin: 5px 0 0 0; font-size: 16px;">New Orders</p>
+          <p style="color: #333; margin: 15px 0 0 0; font-size: 14px;">Assigned on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        </div>
+
+        <!-- Orders Table -->
+        <div style="background: #fff; padding: 20px; margin: 25px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow-x: auto;">
+          <h3 style="color: #000; margin-top: 0; font-size: 18px; border-bottom: 3px solid #FFDD00; padding-bottom: 10px;">📋 Order Details</h3>
+          
+          <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+            <thead>
+              <tr style="background: #000; color: #FFDD00;">
+                <th style="padding: 12px 8px; text-align: center; font-weight: 600;">#</th>
+                <th style="padding: 12px 8px; text-align: left; font-weight: 600;">Order Number</th>
+                <th style="padding: 12px 8px; text-align: left; font-weight: 600;">Type</th>
+                <th style="padding: 12px 8px; text-align: left; font-weight: 600;">Design Name</th>
+                <th style="padding: 12px 8px; text-align: left; font-weight: 600;">Customer</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${orderRows}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Action Button -->
+        <div style="text-align: center; margin: 35px 0 25px 0;">
+          <a href="${orderLink}" 
+             style="background: #FFDD00; color: #000; padding: 14px 35px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold; font-size: 16px; box-shadow: 0 3px 6px rgba(0,0,0,0.16);">
+            View All My Orders →
+          </a>
+        </div>
+
+        <p style="color: #666; font-size: 14px; line-height: 1.6; margin-top: 30px; text-align: center;">
+          Please log in to your employee portal to view complete details and manage these assignments.
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <div style="background: #000; padding: 20px 30px; text-align: center; color: #999; font-size: 13px;">
+        <p style="margin: 5px 0;">© ${new Date().getFullYear()} Swiss Project. All rights reserved.</p>
+        <p style="margin: 5px 0;">This is an automated notification. Please do not reply to this email.</p>
+      </div>
+    </div>
+  `;
+
+  return await exports.sendEmail({
+    email: employee.email,
+    subject: `🎯 ${orderCount} New Orders Assigned to You`,
+    html,
+  });
+};
+

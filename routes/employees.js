@@ -38,6 +38,7 @@ router.post("/", protect, authorize("admin"), async (req, res) => {
     const employee = await User.create({
       name,
       email,
+      username: email, // Use email as username for employees
       password: tempPassword,
       role: "employee",
       employeeRole,

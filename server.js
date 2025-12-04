@@ -23,17 +23,15 @@ const app = express();
 const server = http.createServer(app);
 
 // ============================
-// 🌐 Allowed Origins for CORS
+// 🌐 CORS Configuration
 // ============================
-const allowedOrigins = ["http://localhost:3001", "http://localhost:3000","https://swissy-customer.netlify.app","https://swissy-admin.netlify.app"]; // add more if needed
-
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // allow server-to-server requests
-      if (allowedOrigins.indexOf(origin) === -1) {
-        return callback(new Error("CORS policy: This origin is not allowed"));
-      }
+      // Allow requests with no origin (like mobile apps, curl, Postman)
+      if (!origin) return callback(null, true);
+
+      // ⚠️ DEV MODE: Allow ALL origins to prevent "Network Error"
       return callback(null, true);
     },
     credentials: true,
@@ -63,7 +61,10 @@ mongoose
 // ============================
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: function (origin) {
+      if (!origin) return true;
+      return origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:');
+    },
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   },
@@ -104,6 +105,9 @@ try {
   app.use("/api/users", require("./routes/users"));
   app.use("/api/notifications", require("./routes/notifications"));
   app.use("/api/upload", require("./routes/upload"));
+  app.use("/api/activity", require("./routes/activity"));
+  app.use("/api/cloudinary", require("./routes/cloudinary"));
+  app.use("/api/uploadthing", require("./routes/uploadthing"));
 } catch (err) {
   console.log("error", err);
   console.error("❌ Error loading routes:", err.message);

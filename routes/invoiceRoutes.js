@@ -74,8 +74,13 @@ router.post("/create", protect, authorize("admin"), async (req, res) => {
     order.invoiceStatus = "pending";
     await order.save();
 
-    // Send invoice email with PDF and payment link
-    await sendInvoiceEmail(customer, invoice);
+    // Send invoice email with PDF and payment link (optional - won't fail if email not configured)
+    try {
+      await sendInvoiceEmail(customer, invoice);
+      console.log('✅ Invoice email sent successfully');
+    } catch (emailError) {
+      console.warn('⚠️ Failed to send invoice email (invoice still created):', emailError.message);
+    }
 
     res.status(201).json({ success: true, invoice });
   } catch (err) {
@@ -159,10 +164,18 @@ router.post("/send/:invoiceId", protect, authorize("admin"), async (req, res) =>
       return res.status(404).json({ success: false, message: "Customer not found" });
     }
 
-    // Send invoice email again
-    await sendInvoiceEmail(customer, invoice);
-
-    res.json({ success: true, message: "Invoice sent successfully!" });
+    // Send invoice email again (optional)
+    try {
+      await sendInvoiceEmail(customer, invoice);
+      res.json({ success: true, message: "Invoice sent successfully!" });
+    } catch (emailError) {
+      console.warn('⚠️ Failed to send invoice email:', emailError.message);
+      res.status(500).json({
+        success: false,
+        message: "Invoice exists but email failed to send. Please check email configuration.",
+        error: emailError.message
+      });
+    }
   } catch (err) {
     console.error("❌ Failed to send invoice:", err);
     res.status(500).json({

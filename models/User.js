@@ -3,149 +3,67 @@ const bcrypt = require("bcryptjs");
 
 const userSchema = new mongoose.Schema(
   {
-    // -------------------------
-    // BASIC PROFILE
-    // -------------------------
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    // Address object (customer only)
+    // Basic Profile
+    name: { type: String, required: true, trim: true },
+    username: { type: String, required: true, unique: true, trim: true, lowercase: true },
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    phone: { type: String, default: "" },
+    company: { type: String, default: "" },
+    areaOfInterest: { type: String, default: "" },
+    invoicingEmail: { type: String, unique: true, sparse: true, lowercase: true, trim: true },
+    country: { type: String, default: "" },
+
+    // Address Object
     address: {
-      street: {
-        type: String,
-        required: function () {
-          return this.role === "customer";
-        },
-      },
-      city: {
-        type: String,
-        required: function () {
-          return this.role === "customer";
-        },
-      },
-      state: {
-        type: String,
-        required: function () {
-          return this.role === "customer";
-        },
-      },
-      zipCode: {
-        type: String,
-        required: function () {
-          return this.role === "customer";
-        },
-      },
-    },
-    phone: {
-      type: String,
-      unique: true,
-      required: false,
-    },
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-      lowercase: true,
-      trim: true,
-    },
-    username:{
-      type: String,
-      required: true,
-      unique: true,
-      trim: true,
-    },
-    customerNumber: {
-  type: String,
-  unique: true,
-  sparse: true, 
-},
-
-    invoicingEmail: {
-      type: String,
-      required: false,
-      unique: true,
-      lowercase: true,
-      trim: true,
-    },
-    password: {
-      type: String,
-      required: true,
-      minlength: 6,
-    },
-    // Used only for validation — NOT stored
-    confirmPassword: {
-      type: String,
-      required: false,
-      validate: {
-        validator: function (val) {
-          return val === this.password;
-        },
-        message: "Passwords do not match",
-      },
+      street: { type: String, default: "" },
+      city: { type: String, default: "" },
+      state: { type: String, default: "" },
+      zipCode: { type: String, default: "" },
     },
 
-    // -------------------------
-    // ROLE SYSTEM
-    // -------------------------
-    role: {
-      type: String,
-      enum: ["customer", "employee", "admin"],
-      default: "customer",
-    },
+    // Authentication
+    password: { type: String, required: true, minlength: 6, select: false },
+    role: { type: String, enum: ["customer", "admin", "employee"], default: "customer" },
+
+    // Employee specific
     employeeRole: {
       type: String,
       enum: ["vector", "digitizing", "patches", null],
       default: null,
-      required: function () {
-        return this.role === "employee";
-      },
     },
 
-    // -------------------------
-    // ACCOUNT STATUS & STATS
-    // -------------------------
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
-    ordersCompleted: {
-      type: Number,
-      default: 0,
-    },
-    ordersInProgress: {
-      type: Number,
-      default: 0,
-    },
-    employeeRating: {
-      type: Number,
-      min: 1,
-      max: 5,
-      default: null,
-    },
-    adminNotes: {
-      type: String,
-      default: "",
-    },
-  
-     assignedOrders: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Order' }], 
+    // Google Auth
+    googleAvatar: { type: String },
+    authProvider: { type: String, default: "local" },
+
+    // Account Status
+    isActive: { type: Boolean, default: true },
+    isVerified: { type: Boolean, default: false },
+
+    // Stats
+    ordersCompleted: { type: Number, default: 0 },
+    ordersInProgress: { type: Number, default: 0 },
+    employeeRating: { type: Number, min: 1, max: 5, default: null },
+
+    // Admin
+    adminNotes: { type: String, default: "" },
+    assignedOrders: [{ type: mongoose.Schema.Types.ObjectId, ref: "Order" }],
+
+    // Misc
+    avatar: { type: String, default: "" },
+    customerNumber: { type: String, unique: true, sparse: true },
+
+    // Billing Info (Legacy/Optional)
+    billingAddress: { type: String, default: "" },
+    billingCity: { type: String, default: "" },
+    billingState: { type: String, default: "" },
+    billingZip: { type: String, default: "" },
+    billingCountry: { type: String, default: "" },
   },
-  { timestamps: true },
-  
+  { timestamps: true }
 );
 
-// -------------------------
-// REMOVE confirmPassword BEFORE SAVING
-// -------------------------
-userSchema.pre("save", function (next) {
-  this.confirmPassword = undefined; // prevent saving it in DB
-  next();
-});
-
-// -------------------------
-// PASSWORD HASHING
-// -------------------------
+// Hash password before saving
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
   const salt = await bcrypt.genSalt(10);
@@ -153,9 +71,7 @@ userSchema.pre("save", async function (next) {
   next();
 });
 
-// -------------------------
-// PASSWORD COMPARISON
-// -------------------------
+// Compare password
 userSchema.methods.comparePassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };

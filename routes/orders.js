@@ -7,7 +7,7 @@ const Invoice = require('../models/Invoice');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
-// const { sendOrderNotification, sendOrderStatusUpdate } = require('../utils/email');
+const { sendOrderAssignmentEmail, sendBulkOrderAssignmentEmail } = require('../utils/emailService');
 const router = express.Router();
 
 /* ================================
@@ -59,20 +59,29 @@ router.post('/', protect, upload.array('files', 5), async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid order type.' });
     }
 
-    if (!req.files?.length) {
+    // Handle both Multer files and Cloudinary URLs
+    let uploadedFiles = [];
+
+    if (req.files?.length > 0) {
+      // Old way: Multer uploaded files
+      console.log('📁 Processing Multer files:', req.files.length);
+      uploadedFiles = req.files.map(f => ({
+        url: `/uploads/orders/${f.filename}`,
+        filename: f.filename,
+        size: f.size,
+        mimetype: f.mimetype,
+      }));
+    } else if (body.files && Array.isArray(body.files) && body.files.length > 0) {
+      // New way: Cloudinary URLs sent as JSON
+      console.log('☁️ Processing Cloudinary files:', body.files.length);
+      uploadedFiles = body.files;
+    } else {
       return res.status(400).json({ success: false, message: 'Please upload at least one file.' });
     }
 
-    const uploadedFiles = req.files.map(f => ({
-      url: `/uploads/orders/${f.filename}`,
-      filename: f.filename,
-      size: f.size,
-      mimetype: f.mimetype,
-    }));
-
     const orderData = {
       customerId: req.user._id,
-      status: 'Pending',
+      status: 'In Progress',
       files: uploadedFiles,
       orderType,
       notes: notes || '',
@@ -81,7 +90,7 @@ router.post('/', protect, upload.array('files', 5), async (req, res) => {
 
 
 
-    
+
     /* ============================
        Handle dynamic items per order type
     ============================ */
@@ -108,7 +117,7 @@ router.post('/', protect, upload.array('files', 5), async (req, res) => {
       orderData.items.push({ description: `${designName} - ${length}${unit} x ${width}${unit}`, quantity: 1, price: 20 + sizeFactor });
 
     } else if (orderType === 'patches') {
-      const requiredFields = ['patchDesignName','patchStyle','patchAmount','patchUnit','patchLength','patchWidth','patchBackingStyle','patchQuantity','patchAddress'];
+      const requiredFields = ['patchDesignName', 'patchStyle', 'patchAmount', 'patchUnit', 'patchLength', 'patchWidth', 'patchBackingStyle', 'patchQuantity', 'patchAddress'];
       const missing = requiredFields.filter(f => !body[f]);
       if (missing.length) return res.status(400).json({ success: false, message: `Missing patch fields: ${missing.join(', ')}` });
 
@@ -120,19 +129,19 @@ router.post('/', protect, upload.array('files', 5), async (req, res) => {
     // ✅ Create Order
     const order = await Order.create(orderData);
 
-    // ✅ Create Invoice automatically
-    const subtotal = order.items.reduce((sum, item) => sum + (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 0), 0);
-    const tax = subtotal * 0.1; // 10%
-    const total = subtotal + tax;
-    const invoice = await Invoice.create({
-      orderId: order._id,
-      customerId: order.customerId,
-      invoiceNumber: `INV-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      items: order.items,
-      subtotal,
-      tax,
-      total,
-    });
+    // ❌ Disable Automatic Invoice Creation (Admin will create manually)
+    // const subtotal = order.items.reduce((sum, item) => sum + (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 0), 0);
+    // const tax = subtotal * 0.1; // 10%
+    // const total = subtotal + tax;
+    // const invoice = await Invoice.create({
+    //   orderId: order._id,
+    //   customerId: order.customerId,
+    //   invoiceNumber: `INV-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    //   items: order.items,
+    //   subtotal,
+    //   tax,
+    //   total,
+    // });
 
     // Notification for Customer
     const notificationCustomer = await Notification.create({
@@ -146,10 +155,24 @@ router.post('/', protect, upload.array('files', 5), async (req, res) => {
     io.to(`user-${req.user._id}`).emit('orderUpdate', order);
 
     // Notify Admins about new order
-    const admins = await User.find({ role: 'admin' });
-    admins.forEach(a => io.to(`user-${a._id}`).emit('newOrder', order));
+    try {
+      const admins = await User.find({ role: 'admin' });
+      for (const admin of admins) {
+        const adminNotification = await Notification.create({
+          userId: admin._id,
+          orderId: order._id,
+          type: 'new_order',
+          title: 'New Order Received',
+          message: `New ${order.orderType || 'order'} order ${order.orderNumber} from ${req.user.name || 'customer'}`,
+        });
+        io.to(`user-${admin._id}`).emit('newNotification', adminNotification);
+        io.to(`user-${admin._id}`).emit('newOrder', order);
+      }
+    } catch (notifError) {
+      console.error('⚠️ Failed to send admin notifications (order still created):', notifError);
+    }
 
-    res.status(201).json({ success: true, order, invoice });
+    res.status(201).json({ success: true, order });
 
   } catch (error) {
     console.error('❌ Failed to create order:', error);
@@ -158,6 +181,55 @@ router.post('/', protect, upload.array('files', 5), async (req, res) => {
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     });
     res.status(500).json({ success: false, message: 'Failed to create order', error: error.message });
+  }
+});
+
+/* ================================
+   GET ORDER STATS (Admin)
+================================ */
+router.get('/stats', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'employee') {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    const stats = await Order.aggregate([
+      {
+        $facet: {
+          statusCounts: [
+            { $group: { _id: "$status", count: { $sum: 1 } } }
+          ],
+          typeCounts: [
+            { $group: { _id: "$orderType", count: { $sum: 1 } } }
+          ],
+          totalCount: [
+            { $count: "count" }
+          ]
+        }
+      }
+    ]);
+
+    const result = stats[0];
+    const statusMap = result.statusCounts.reduce((acc, curr) => ({ ...acc, [curr._id]: curr.count }), {});
+    const typeMap = result.typeCounts.reduce((acc, curr) => ({ ...acc, [curr._id]: curr.count }), {});
+    const total = result.totalCount[0] ? result.totalCount[0].count : 0;
+
+    res.json({
+      success: true,
+      stats: {
+        pending: statusMap['Pending'] || 0,
+        inProgress: statusMap['In Progress'] || 0,
+        completed: statusMap['Completed'] || 0,
+        rejected: statusMap['Rejected'] || 0,
+        patches: typeMap['patches'] || 0,
+        digitizing: typeMap['digitizing'] || 0,
+        vector: typeMap['vector'] || 0,
+        total
+      }
+    });
+  } catch (error) {
+    console.error('❌ Failed to fetch stats:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch stats' });
   }
 });
 
@@ -171,7 +243,9 @@ router.get('/', protect, async (req, res) => {
     const orders = await Order.find(filter)
       .sort({ createdAt: -1 })
       .populate('customerId', 'name email')
-      .populate('assignedTo', 'name email employeeRole');
+      .populate('assignedTo', 'name email employeeRole')
+      .populate('invoiceId')
+      .populate('parentOrderId', 'orderNumber');
     res.json({ success: true, count: orders.length, orders });
   } catch (error) {
     console.error('❌ Failed to fetch orders:', error);
@@ -187,9 +261,12 @@ router.get('/assigned', protect, async (req, res) => {
     if (req.user.role !== 'employee') return res.status(403).json({ success: false, message: 'Only employees can access assigned orders' });
 
     const orders = await Order.find({ assignedTo: req.user._id })
+      .select('-patchAddress') // Exclude patch address for privacy
       .sort({ createdAt: -1 })
-      .populate('customerId', 'name email')
-      .populate('assignedTo', 'name email employeeRole');
+      .populate('customerId', '_id') // Only populate ID, no name/email
+      .populate('assignedTo', 'name email employeeRole')
+      .populate('invoiceId')
+      .populate('parentOrderId', 'orderNumber');
 
     res.json({ success: true, count: orders.length, orders });
   } catch (error) {
@@ -236,6 +313,226 @@ router.get('/invoices', protect, async (req, res) => {
 
 
 
+const { generateOrderPDF } = require('../utils/pdfService');
+
+/* ================================
+   DOWNLOAD ORDER PDF
+================================ */
+router.get('/:id/pdf', protect, async (req, res) => {
+  try {
+    console.log(`📥 PDF Request for Order ID: ${req.params.id}`);
+    const order = await Order.findById(req.params.id).populate('customerId', 'name email');
+
+    if (!order) {
+      console.error(`❌ Order not found: ${req.params.id}`);
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    console.log(`📄 Generating PDF for order ${order.orderNumber}...`);
+    const pdfBuffer = await generateOrderPDF(order);
+    console.log(`✅ PDF Generated. Size: ${pdfBuffer.length} bytes`);
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="Order-${order.orderNumber}.pdf"`,
+      'Content-Length': pdfBuffer.length,
+    });
+
+    res.send(pdfBuffer);
+    console.log(`📤 PDF sent to client.`);
+  } catch (error) {
+    console.error('❌ Failed to generate PDF route error:', error);
+    res.status(500).json({ success: false, message: 'Failed to generate PDF' });
+  }
+});
+
+/* ================================
+   GET CUSTOMER AGGREGATE DATA (Admin)
+================================ */
+router.get('/customer-aggregate', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Only admin can access customer aggregates' });
+
+    const { customerId, customerEmail, customerName } = req.query;
+
+    if (!customerId && !customerEmail && !customerName) {
+      return res.status(400).json({ success: false, message: 'Provide customerId, customerEmail, or customerName' });
+    }
+
+    // Build query to find customer
+    let customerQuery = {};
+    if (customerId) customerQuery._id = customerId;
+    else if (customerEmail) customerQuery.email = new RegExp(customerEmail, 'i');
+    else if (customerName) customerQuery.name = new RegExp(customerName, 'i');
+
+    // Find customers matching the query
+    const customers = await User.find(customerQuery).select('_id name email');
+
+    if (!customers.length) {
+      return res.json({ success: true, aggregates: [] });
+    }
+
+    const customerIds = customers.map(c => c._id);
+
+    // Get all orders for these customers
+    const orders = await Order.find({ customerId: { $in: customerIds } })
+      .populate('invoiceId')
+      .sort({ createdAt: -1 });
+
+    // Aggregate data by customer
+    const aggregates = customers.map(customer => {
+      const customerOrders = orders.filter(o => o.customerId.toString() === customer._id.toString());
+
+      // Calculate total quantity
+      let totalQuantity = 0;
+      customerOrders.forEach(order => {
+        if (order.orderType === 'patches') {
+          totalQuantity += order.patchQuantity || 0;
+        } else {
+          // For vector/digitizing, sum up item quantities
+          order.items.forEach(item => {
+            totalQuantity += item.quantity || 0;
+          });
+        }
+      });
+
+      // Calculate total paid (from invoices with paid status or completed orders)
+      let totalPaid = 0;
+      customerOrders.forEach(order => {
+        if (order.invoiceId && order.invoiceId.status === 'paid') {
+          totalPaid += order.invoiceId.total || 0;
+        } else if (order.status === 'Completed' && order.invoiceId) {
+          totalPaid += order.invoiceId.total || 0;
+        }
+      });
+
+      // Group by status
+      const ordersByStatus = {};
+      customerOrders.forEach(order => {
+        ordersByStatus[order.status] = (ordersByStatus[order.status] || 0) + 1;
+      });
+
+      return {
+        customer: {
+          _id: customer._id,
+          name: customer.name,
+          email: customer.email
+        },
+        totalOrders: customerOrders.length,
+        totalQuantity,
+        totalPaid: totalPaid.toFixed(2),
+        ordersByStatus,
+        orders: customerOrders
+      };
+    });
+
+    res.json({ success: true, aggregates });
+  } catch (error) {
+    console.error('❌ Failed to fetch customer aggregates:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch customer aggregates', error: error.message });
+  }
+});
+
+/* ================================
+   GET EMPLOYEE ANALYTICS (Admin)
+================================ */
+router.get('/employee-analytics', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Only admin can access employee analytics' });
+
+    const { startDate, endDate } = req.query;
+
+    // Get all employees
+    const employees = await User.find({ role: 'employee' }).select('name email employeeRole');
+
+    // Build date filter if provided
+    let dateFilter = {};
+    if (startDate || endDate) {
+      dateFilter.createdAt = {};
+      if (startDate) dateFilter.createdAt.$gte = new Date(startDate);
+      if (endDate) dateFilter.createdAt.$lte = new Date(endDate);
+    }
+
+    // Get all orders (with optional date filter)
+    const allOrders = await Order.find(dateFilter)
+      .populate('assignedTo', 'name email')
+      .populate('customerId', 'name email')
+      .sort({ createdAt: -1 });
+
+    // Build analytics for each employee
+    const analytics = employees.map(employee => {
+      const assignedOrders = allOrders.filter(o => o.assignedTo?._id.toString() === employee._id.toString());
+
+      const pending = assignedOrders.filter(o => o.status === 'Pending' || o.status === 'In Progress');
+      const inProgress = assignedOrders.filter(o => o.status === 'In Progress');
+      const completed = assignedOrders.filter(o => o.status === 'Completed');
+      const rejected = assignedOrders.filter(o => o.status === 'Rejected');
+
+      // Calculate average completion time for completed orders
+      let avgCompletionTime = 0;
+      if (completed.length > 0) {
+        const completionTimes = completed.map(o => {
+          const created = new Date(o.createdAt);
+          const updated = new Date(o.updatedAt);
+          return (updated - created) / (1000 * 60 * 60 * 24); // days
+        });
+        avgCompletionTime = (completionTimes.reduce((a, b) => a + b, 0) / completed.length).toFixed(2);
+      }
+
+      // Recent completed orders with details
+      const recentCompleted = completed.slice(0, 10).map(o => ({
+        _id: o._id,
+        orderNumber: o.orderNumber,
+        orderType: o.orderType,
+        designName: o.designName || o.patchDesignName || '-',
+        customerName: o.customerId?.name || '-',
+        status: o.status,
+        completedAt: o.updatedAt,
+        createdAt: o.createdAt
+      }));
+
+      return {
+        employee: {
+          _id: employee._id,
+          name: employee.name,
+          email: employee.email,
+          role: employee.employeeRole
+        },
+        totalAssigned: assignedOrders.length,
+        pending: pending.length,
+        inProgress: inProgress.length,
+        completed: completed.length,
+        rejected: rejected.length,
+        avgCompletionTimeDays: avgCompletionTime,
+        recentCompleted,
+        allCompletedOrders: completed.map(o => ({
+          _id: o._id,
+          orderNumber: o.orderNumber,
+          orderType: o.orderType,
+          designName: o.designName || o.patchDesignName || '-',
+          customerName: o.customerId?.name || '-',
+          completedAt: o.updatedAt,
+          createdAt: o.createdAt
+        }))
+      };
+    });
+
+    // Also include unassigned orders count
+    const unassignedOrders = allOrders.filter(o => !o.assignedTo);
+
+    res.json({
+      success: true,
+      analytics,
+      unassignedCount: unassignedOrders.length,
+      totalOrders: allOrders.length
+    });
+  } catch (error) {
+    console.error('❌ Failed to fetch employee analytics:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch employee analytics', error: error.message });
+  }
+});
+
+
 /* ================================
    ASSIGN SINGLE ORDER (Admin)
 ================================ */
@@ -249,7 +546,7 @@ router.patch('/assign/:id', protect, async (req, res) => {
     const employee = await User.findById(employeeId);
     if (!employee || employee.role !== 'employee') return res.status(400).json({ success: false, message: 'Invalid employee' });
 
-    const order = await Order.findById(req.params.id);
+    const order = await Order.findById(req.params.id).populate('customerId', 'name');
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
     const previousAssigned = order.assignedTo ? order.assignedTo.toString() : null;
@@ -271,6 +568,13 @@ router.patch('/assign/:id', protect, async (req, res) => {
       title: `Order Assigned: ${order.orderNumber}`,
       message: `You have been assigned order ${order.orderNumber}.`,
     });
+
+    // 📧 Send Email Notification
+    try {
+      await sendOrderAssignmentEmail(employee, order);
+    } catch (emailErr) {
+      console.error('⚠️ Failed to send assignment email:', emailErr);
+    }
 
     const io = req.app.get('io');
     io.to(`user-${employeeId}`).emit('newNotification', assignNotif);
@@ -297,7 +601,7 @@ router.patch('/bulk-assign', protect, async (req, res) => {
     const employee = await User.findById(employeeId);
     if (!employee || employee.role !== 'employee') return res.status(400).json({ success: false, message: 'Invalid employee' });
 
-    const orders = await Order.find({ _id: { $in: orderIds } });
+    const orders = await Order.find({ _id: { $in: orderIds } }).populate('customerId', 'name');
     if (!orders.length) return res.status(404).json({ success: false, message: 'No matching orders found' });
 
     for (const o of orders) {
@@ -321,6 +625,13 @@ router.patch('/bulk-assign', protect, async (req, res) => {
       });
     }
 
+    // 📧 Send Bulk Email Notification
+    try {
+      await sendBulkOrderAssignmentEmail(employee, orders);
+    } catch (emailErr) {
+      console.error('⚠️ Failed to send bulk assignment email:', emailErr);
+    }
+
     const io = req.app.get('io');
     io.to(`user-${employeeId}`).emit('newNotification', { message: `${orders.length} orders assigned` });
     io.emit('bulkAssign', { orderIds, employeeId });
@@ -329,6 +640,160 @@ router.patch('/bulk-assign', protect, async (req, res) => {
   } catch (error) {
     console.error('❌ Failed bulk assign:', error);
     res.status(500).json({ success: false, message: 'Failed bulk assign', error: error.message });
+  }
+});
+
+/* ================================
+   CREATE REVISION ORDER
+   Customer requests revision -> Creates new order
+================================ */
+router.post('/:id/create-revision', protect, async (req, res) => {
+  try {
+    const originalOrder = await Order.findById(req.params.id).populate('parentOrderId');
+    if (!originalOrder) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (originalOrder.customerId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    // Prepare revision order data by copying from original
+    const revisionData = {
+      customerId: originalOrder.customerId,
+      orderType: originalOrder.orderType,
+      files: originalOrder.files, // Copy original files
+
+      // Revision tracking
+      parentOrderId: req.params.id,
+      isRevision: true,
+      revisionNumber: originalOrder.revisionNumber + 1,
+      revisionReason: req.body.comments || '',
+
+      // Fresh start for new revision
+      status: 'In Progress',
+      customerApprovalStatus: 'pending',
+      sampleImages: [],
+      notes: `Revision #${originalOrder.revisionNumber + 1} requested: ${req.body.comments || 'No comments provided'}`,
+    };
+
+    // Copy order-type-specific fields
+    if (originalOrder.orderType === 'patches') {
+      Object.assign(revisionData, {
+        patchDesignName: originalOrder.patchDesignName,
+        patchStyle: originalOrder.patchStyle,
+        patchAmount: originalOrder.patchAmount,
+        patchUnit: originalOrder.patchUnit,
+        patchLength: originalOrder.patchLength,
+        patchWidth: originalOrder.patchWidth,
+        patchBackingStyle: originalOrder.patchBackingStyle,
+        patchQuantity: originalOrder.patchQuantity,
+        patchAddress: originalOrder.patchAddress,
+      });
+    } else if (originalOrder.orderType === 'vector') {
+      Object.assign(revisionData, {
+        designName: originalOrder.designName,
+        fileFormat: originalOrder.fileFormat,
+        otherInstructions: originalOrder.otherInstructions,
+      });
+    } else if (originalOrder.orderType === 'digitizing') {
+      Object.assign(revisionData, {
+        designName: originalOrder.designName,
+        PlacementofDesign: originalOrder.PlacementofDesign,
+        CustomMeasurements: originalOrder.CustomMeasurements,
+        length: originalOrder.length,
+        width: originalOrder.width,
+        unit: originalOrder.unit,
+        customSizes: originalOrder.customSizes,
+      });
+    }
+
+    // Create the revision order
+    const revisionOrder = await Order.create(revisionData);
+
+    // Update original order to mark as superseded
+    originalOrder.status = 'Superseded';
+    originalOrder.notes = (originalOrder.notes || '') + `\n[Superseded by revision order ${revisionOrder.orderNumber} on ${new Date().toLocaleDateString()}]`;
+    await originalOrder.save();
+
+    // Notify admins about new revision order
+    const admins = await User.find({ role: 'admin' });
+    const io = req.app.get('io');
+
+    const notification = await Notification.create({
+      userId: admins[0]?._id, // Notify first admin (or loop through all)
+      orderId: revisionOrder._id,
+      type: 'revision_order_created',
+      title: `Revision Order Created: ${revisionOrder.orderNumber}`,
+      message: `Customer requested revision for order ${originalOrder.orderNumber}. New order ${revisionOrder.orderNumber} created.`,
+    });
+
+    admins.forEach(a => {
+      io.to(`user-${a._id}`).emit('newRevisionOrder', revisionOrder);
+      io.to(`user-${a._id}`).emit('newNotification', notification);
+    });
+
+    // Notify customer
+    const customerNotif = await Notification.create({
+      userId: req.user._id,
+      orderId: revisionOrder._id,
+      type: 'revision_order_created',
+      title: 'Revision Order Created',
+      message: `Your revision request has been received. New order ${revisionOrder.orderNumber} created.`,
+    });
+    io.to(`user-${req.user._id}`).emit('newNotification', customerNotif);
+
+    res.json({ success: true, revisionOrder, originalOrder });
+  } catch (error) {
+    console.error('❌ Failed to create revision order:', error);
+    res.status(500).json({ success: false, message: 'Failed to create revision order', error: error.message });
+  }
+});
+
+/* ================================
+   CUSTOMER APPROVE / REQUEST REVISION
+   (MUST BE BEFORE PUT /:id)
+================================ */
+router.patch('/:id/approve', protect, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (order.customerId.toString() !== req.user._id.toString()) return res.status(403).json({ success: false, message: 'Not authorized' });
+
+    order.customerApprovalStatus = 'approved';
+    await order.save();
+
+    // Notify admin
+    const admins = await User.find({ role: 'admin' });
+    const io = req.app.get('io');
+    admins.forEach(a => io.to(`user-${a._id}`).emit('adminOrderUpdate', order));
+    io.to(`user-${order.customerId}`).emit('orderUpdate', order);
+
+    res.json({ success: true, order });
+  } catch (error) {
+    console.error('❌ Failed to approve design:', error);
+    res.status(500).json({ success: false, message: 'Failed to approve design', error: error.message });
+  }
+});
+
+router.patch('/:id/revision-request', protect, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (order.customerId.toString() !== req.user._id.toString()) return res.status(403).json({ success: false, message: 'Not authorized' });
+
+    order.customerApprovalStatus = 'revision_requested';
+    if (req.body.comments) {
+      order.notes = (order.notes || '') + '\nRevision Request: ' + req.body.comments;
+    }
+    await order.save();
+
+    const io = req.app.get('io');
+    const admins = await User.find({ role: 'admin' });
+    admins.forEach(a => io.to(`user-${a._id}`).emit('adminOrderUpdate', order));
+    io.to(`user-${order.customerId}`).emit('orderUpdate', order);
+
+    res.json({ success: true, order });
+  } catch (error) {
+    console.error('❌ Failed to request revision:', error);
+    res.status(500).json({ success: false, message: 'Failed to request revision', error: error.message });
   }
 });
 
@@ -412,6 +877,259 @@ router.delete('/:id', protect, async (req, res) => {
   } catch (error) {
     console.error('❌ Failed to delete order:', error);
     res.status(500).json({ success: false, message: 'Failed to delete order', error: error.message });
+  }
+});
+/* ================================
+   UPLOAD SAMPLE IMAGE (Admin → Customer)
+================================ */
+router.post('/:id/sample', protect, upload.single('file'), async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Only admin can upload sample' });
+
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+
+    let sampleImage;
+
+    // Check if Cloudinary URL is provided (new way)
+    if (req.body.cloudinaryUrl) {
+      console.log('☁️ Processing Cloudinary sample upload');
+      sampleImage = {
+        url: req.body.cloudinaryUrl,
+        filename: req.body.filename || 'sample.jpg',
+        type: 'initial',
+        comments: req.body.comments || '',
+        uploadedAt: new Date()
+      };
+    }
+    // Check if Multer file is provided (old way - backward compatibility)
+    else if (req.file) {
+      console.log('📁 Processing Multer sample upload');
+      sampleImage = {
+        url: `/uploads/orders/${req.file.filename}`,
+        filename: req.file.filename,
+        type: 'initial',
+        comments: req.body.comments || '',
+        uploadedAt: new Date()
+      };
+    }
+    else {
+      return res.status(400).json({ success: false, message: 'Please upload a sample file or provide Cloudinary URL' });
+    }
+
+    order.sampleImages.push(sampleImage);
+    order.status = 'Waiting for Approval';
+    await order.save();
+
+    // Notify customer
+    const notification = await Notification.create({
+      userId: order.customerId,
+      orderId: order._id,
+      type: 'sample_uploaded',
+      title: 'Sample Uploaded',
+      message: `A sample has been uploaded for order ${order.orderNumber}. Approve or Request Revision.`,
+    });
+
+    const io = req.app.get('io');
+    io.to(`user-${order.customerId}`).emit('newNotification', notification);
+    io.to(`user-${order.customerId}`).emit('orderUpdate', order);
+
+    res.json({ success: true, order, sampleImage: order.sampleImages[order.sampleImages.length - 1] });
+  } catch (error) {
+    console.error('❌ Failed to upload sample:', error);
+    res.status(500).json({ success: false, message: 'Failed to upload sample', error: error.message });
+  }
+});
+
+/* ================================
+   UPLOAD REVISION (Admin)
+================================ */
+router.post('/:id/revision', protect, upload.single('file'), async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Only admin can upload revision' });
+
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+
+    let revisionImage;
+
+    // Check if Cloudinary URL is provided (new way)
+    if (req.body.cloudinaryUrl) {
+      console.log('☁️ Processing Cloudinary revision upload');
+      revisionImage = {
+        url: req.body.cloudinaryUrl,
+        filename: req.body.filename || 'revision.jpg',
+        type: 'revision',
+        comments: req.body.comments || '',
+        uploadedAt: new Date()
+      };
+    }
+    // Check if Multer file is provided (old way - backward compatibility)
+    else if (req.file) {
+      console.log('📁 Processing Multer revision upload');
+      revisionImage = {
+        url: `/uploads/orders/${req.file.filename}`,
+        filename: req.file.filename,
+        type: 'revision',
+        comments: req.body.comments || '',
+        uploadedAt: new Date()
+      };
+    }
+    else {
+      return res.status(400).json({ success: false, message: 'Please upload a revision file or provide Cloudinary URL' });
+    }
+
+    order.sampleImages.push(revisionImage);
+    order.status = 'Revision Ready';
+    await order.save();
+
+    // Notify customer
+    const notification = await Notification.create({
+      userId: order.customerId,
+      orderId: order._id,
+      type: 'revision_uploaded',
+      title: 'Revision Uploaded',
+      message: `A revised sample has been uploaded for order ${order.orderNumber}. Approve or Request further edits.`,
+    });
+
+    const io = req.app.get('io');
+    io.to(`user-${order.customerId}`).emit('newNotification', notification);
+    io.to(`user-${order.customerId}`).emit('orderUpdate', order);
+
+    res.json({ success: true, order, revisionImage: order.sampleImages[order.sampleImages.length - 1] });
+  } catch (error) {
+    console.error('❌ Failed to upload revision:', error);
+    res.status(500).json({ success: false, message: 'Failed to upload revision', error: error.message });
+  }
+});
+
+/* ================================
+   APPROVE REVISION (Customer)
+================================ */
+router.patch('/:id/revision-approve', protect, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (order.customerId.toString() !== req.user._id.toString()) return res.status(403).json({ success: false, message: 'Not authorized' });
+
+    // order.status = 'Revision Approved'; // ❌ Customer cannot change status
+    order.customerApprovalStatus = 'approved';
+    await order.save();
+
+    const io = req.app.get('io');
+    const admins = await User.find({ role: 'admin' });
+    admins.forEach(a => io.to(`user-${a._id}`).emit('adminOrderUpdate', order));
+    io.to(`user-${order.customerId}`).emit('orderUpdate', order);
+
+    res.json({ success: true, order });
+  } catch (error) {
+    console.error('❌ Failed to approve revision:', error);
+    res.status(500).json({ success: false, message: 'Failed to approve revision', error: error.message });
+  }
+});
+
+/* ================================
+   CREATE REVISION ORDER (Customer)
+================================ */
+router.post('/:id/create-revision', protect, async (req, res) => {
+  try {
+    const parentOrder = await Order.findById(req.params.id).populate('customerId');
+    if (!parentOrder) return res.status(404).json({ success: false, message: 'Parent order not found' });
+
+    // Verify the customer owns this order
+    if (parentOrder.customerId._id.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    // Calculate next revision number
+    const existingRevisions = await Order.find({ parentOrderId: parentOrder._id });
+    const nextRevisionNumber = existingRevisions.length + 1;
+
+    // Create revision order by copying parent order data
+    const revisionOrderData = {
+      customerId: parentOrder.customerId._id,
+      orderType: parentOrder.orderType,
+      status: 'In Progress',
+
+      // Copy order-type-specific fields
+      designName: parentOrder.designName,
+      fileFormat: parentOrder.fileFormat,
+      otherInstructions: parentOrder.otherInstructions,
+
+      patchDesignName: parentOrder.patchDesignName,
+      patchStyle: parentOrder.patchStyle,
+      patchAmount: parentOrder.patchAmount,
+      patchUnit: parentOrder.patchUnit,
+      patchLength: parentOrder.patchLength,
+      patchWidth: parentOrder.patchWidth,
+      patchBackingStyle: parentOrder.patchBackingStyle,
+      patchQuantity: parentOrder.patchQuantity,
+      patchAddress: parentOrder.patchAddress,
+
+      PlacementofDesign: parentOrder.PlacementofDesign,
+      CustomMeasurements: parentOrder.CustomMeasurements,
+      length: parentOrder.length,
+      width: parentOrder.width,
+      unit: parentOrder.unit,
+      customSizes: parentOrder.customSizes,
+
+      // Copy files and items
+      files: parentOrder.files,
+      items: parentOrder.items,
+
+      // Revision tracking
+      parentOrderId: parentOrder._id,
+      isRevision: true,
+      revisionNumber: nextRevisionNumber,
+      revisionReason: req.body.comments || 'Customer requested revision',
+
+      // Notes
+      notes: `Revision ${nextRevisionNumber} of order ${parentOrder.orderNumber}. Reason: ${req.body.comments || 'Not specified'}`,
+    };
+
+    const revisionOrder = await Order.create(revisionOrderData);
+
+    // Update parent order status to indicate it has been superseded
+    parentOrder.status = 'Superseded';
+    await parentOrder.save();
+
+    // Notify admins about the new revision request
+    const io = req.app.get('io');
+    if (io) {
+      const admins = await User.find({ role: 'admin' });
+      const notification = await Notification.create({
+        userId: admins[0]._id, // First admin
+        orderId: revisionOrder._id,
+        type: 'revision_requested',
+        title: 'Revision Order Created',
+        message: `Customer ${parentOrder.customerId.name} created revision order ${revisionOrder.orderNumber} for ${parentOrder.orderNumber}`,
+      });
+
+      admins.forEach(admin => {
+        io.to(`user-${admin._id}`).emit('newNotification', notification);
+        io.to(`user-${admin._id}`).emit('adminOrderUpdate', revisionOrder);
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Revision order created successfully',
+      revisionOrder: {
+        _id: revisionOrder._id,
+        orderNumber: revisionOrder.orderNumber,
+        orderType: revisionOrder.orderType,
+        status: revisionOrder.status,
+        parentOrderId: revisionOrder.parentOrderId,
+        revisionNumber: revisionOrder.revisionNumber,
+      }
+    });
+  } catch (error) {
+    console.error('❌ Failed to create revision order:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create revision order',
+      error: error.message
+    });
   }
 });
 

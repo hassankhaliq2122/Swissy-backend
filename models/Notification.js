@@ -24,7 +24,10 @@ const notificationSchema = new mongoose.Schema(
         "order_reassigned",       // employee
         "employee_order_updated", // admin
         "admin_note_added",       // customer + employee
-        "employee_performance"    // admin (report)
+        "employee_performance",   // admin (report)
+        "sample_uploaded",        // customer (admin uploaded sample)
+        "revision_uploaded",      // customer (admin uploaded revision)
+        "revision_requested"      // admin (customer requested revision)
       ],
       required: true,
     },
