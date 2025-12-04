@@ -415,3 +415,112 @@ exports.sendBulkOrderAssignmentEmail = async (employee, orders, assignedBy = 'Ad
   });
 };
 
+/* ===============================
+   CUSTOMER ORDER CONFIRMATION
+=============================== */
+exports.sendCustomerOrderConfirmation = async (customer, order) => {
+  if (!customer.email) {
+    console.warn('⚠️ Customer has no email. Skipping order confirmation email.');
+    return null;
+  }
+
+  // Get design name based on order type
+  const designName = order.orderType === 'patches'
+    ? (order.patchDesignName || 'N/A')
+    : (order.designName || 'N/A');
+
+  const orderLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/customer/orders`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
+      <!-- Header -->
+      <div style="background: #000; padding: 30px; text-align: center;">
+        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">Swiss Project</h1>
+        <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">Order Management System</p>
+      </div>
+
+      <!-- Main Content -->
+      <div style="padding: 40px 30px; background: #f9f9f9;">
+        <h2 style="color: #333; margin-top: 0; font-size: 24px;">✅ Order Placed Successfully!</h2>
+        
+        <p style="color: #555; font-size: 16px; line-height: 1.6;">
+          Hello <strong>${customer.name}</strong>,
+        </p>
+        
+        <p style="color: #555; font-size: 16px; line-height: 1.6;">
+          Thank you for placing your order with Swiss Project! Your order has been received and is being processed.
+        </p>
+
+        <!-- Order Details Card -->
+        <div style="background: #fff; border-left: 4px solid #FFDD00; padding: 20px; margin: 25px 0; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+          <h3 style="color: #000; margin-top: 0; font-size: 18px;">📋 Order Details</h3>
+          
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600; width: 40%;">Order Number:</td>
+              <td style="padding: 8px 0; color: #333; font-weight: bold;">${order.orderNumber}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Order Type:</td>
+              <td style="padding: 8px 0; color: #333;">
+                <span style="background: #FFDD00; color: #000; padding: 4px 12px; border-radius: 12px; font-weight: 600; font-size: 14px;">
+                  ${order.orderType.toUpperCase()}
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Design Name:</td>
+              <td style="padding: 8px 0; color: #333;">${designName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Status:</td>
+              <td style="padding: 8px 0; color: #333;">
+                <span style="background: #e3f2fd; color: #1976d2; padding: 4px 12px; border-radius: 12px; font-weight: 600; font-size: 14px;">
+                  ${order.status}
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Order Date:</td>
+              <td style="padding: 8px 0; color: #333;">${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</td>
+            </tr>
+          </table>
+        </div>
+
+        ${order.notes ? `
+        <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px;">
+          <p style="margin: 0; color: #856404; font-size: 14px;">
+            <strong>📝 Notes:</strong> ${order.notes}
+          </p>
+        </div>
+        ` : ''}
+
+        <!-- Action Button -->
+        <div style="text-align: center; margin: 35px 0 25px 0;">
+          <a href="${orderLink}" 
+             style="background: #FFDD00; color: #000; padding: 14px 35px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold; font-size: 16px; box-shadow: 0 3px 6px rgba(0,0,0,0.16);">
+            View My Orders →
+          </a>
+        </div>
+
+        <p style="color: #666; font-size: 14px; line-height: 1.6; margin-top: 30px;">
+          We will keep you updated via email as your order progresses. You can also track your order status anytime by logging into your customer portal.
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <div style="background: #000; padding: 20px 30px; text-align: center; color: #999; font-size: 13px;">
+        <p style="margin: 5px 0;">© ${new Date().getFullYear()} Swiss Project. All rights reserved.</p>
+        <p style="margin: 5px 0;">This is an automated notification. Please do not reply to this email.</p>
+      </div>
+    </div>
+  `;
+
+  return await exports.sendEmail({
+    email: customer.email,
+    subject: `✅ Order Confirmed: ${order.orderNumber}`,
+    html,
+  });
+};
+
+
