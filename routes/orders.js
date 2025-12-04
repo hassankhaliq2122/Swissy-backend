@@ -7,7 +7,7 @@ const Invoice = require('../models/Invoice');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
-const { sendOrderAssignmentEmail, sendBulkOrderAssignmentEmail } = require('../utils/emailService');
+const { sendOrderAssignmentEmail, sendBulkOrderAssignmentEmail, sendCustomerOrderConfirmation, sendAdminNewOrderEmail, sendCustomerStatusUpdateEmail } = require('../utils/emailService');
 const router = express.Router();
 
 /* ================================
@@ -151,6 +151,7 @@ router.post('/', protect, upload.array('files', 5), async (req, res) => {
       title: 'Order Placed Successfully',
       message: `Your order ${order.orderNumber} has been created successfully.`,
     });
+
     io.to(`user-${req.user._id}`).emit('newNotification', notificationCustomer);
     io.to(`user-${req.user._id}`).emit('orderUpdate', order);
 
@@ -161,7 +162,7 @@ router.post('/', protect, upload.array('files', 5), async (req, res) => {
         const adminNotification = await Notification.create({
           userId: admin._id,
           orderId: order._id,
-          type: 'new_order',
+          type: 'order_created',
           title: 'New Order Received',
           message: `New ${order.orderType || 'order'} order ${order.orderNumber} from ${req.user.name || 'customer'}`,
         });
@@ -170,6 +171,22 @@ router.post('/', protect, upload.array('files', 5), async (req, res) => {
       }
     } catch (notifError) {
       console.error('⚠️ Failed to send admin notifications (order still created):', notifError);
+    }
+
+    // 📧 Send Emails (non-blocking)
+    try {
+      // Customer confirmation email
+      await sendCustomerOrderConfirmation(req.user, order);
+      console.log('📧 Customer confirmation email sent');
+
+      // Admin notification emails
+      const admins = await User.find({ role: 'admin' });
+      for (const admin of admins) {
+        await sendAdminNewOrderEmail(admin.email, order, req.user);
+      }
+      console.log('📧 Admin notification emails sent');
+    } catch (emailError) {
+      console.error('⚠️ Failed to send order emails (order still created):', emailError);
     }
 
     res.status(201).json({ success: true, order });
@@ -643,109 +660,7 @@ router.patch('/bulk-assign', protect, async (req, res) => {
   }
 });
 
-/* ================================
-   CREATE REVISION ORDER
-   Customer requests revision -> Creates new order
-================================ */
-router.post('/:id/create-revision', protect, async (req, res) => {
-  try {
-    const originalOrder = await Order.findById(req.params.id).populate('parentOrderId');
-    if (!originalOrder) return res.status(404).json({ success: false, message: 'Order not found' });
-    if (originalOrder.customerId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ success: false, message: 'Not authorized' });
-    }
 
-    // Prepare revision order data by copying from original
-    const revisionData = {
-      customerId: originalOrder.customerId,
-      orderType: originalOrder.orderType,
-      files: originalOrder.files, // Copy original files
-
-      // Revision tracking
-      parentOrderId: req.params.id,
-      isRevision: true,
-      revisionNumber: originalOrder.revisionNumber + 1,
-      revisionReason: req.body.comments || '',
-
-      // Fresh start for new revision
-      status: 'In Progress',
-      customerApprovalStatus: 'pending',
-      sampleImages: [],
-      notes: `Revision #${originalOrder.revisionNumber + 1} requested: ${req.body.comments || 'No comments provided'}`,
-    };
-
-    // Copy order-type-specific fields
-    if (originalOrder.orderType === 'patches') {
-      Object.assign(revisionData, {
-        patchDesignName: originalOrder.patchDesignName,
-        patchStyle: originalOrder.patchStyle,
-        patchAmount: originalOrder.patchAmount,
-        patchUnit: originalOrder.patchUnit,
-        patchLength: originalOrder.patchLength,
-        patchWidth: originalOrder.patchWidth,
-        patchBackingStyle: originalOrder.patchBackingStyle,
-        patchQuantity: originalOrder.patchQuantity,
-        patchAddress: originalOrder.patchAddress,
-      });
-    } else if (originalOrder.orderType === 'vector') {
-      Object.assign(revisionData, {
-        designName: originalOrder.designName,
-        fileFormat: originalOrder.fileFormat,
-        otherInstructions: originalOrder.otherInstructions,
-      });
-    } else if (originalOrder.orderType === 'digitizing') {
-      Object.assign(revisionData, {
-        designName: originalOrder.designName,
-        PlacementofDesign: originalOrder.PlacementofDesign,
-        CustomMeasurements: originalOrder.CustomMeasurements,
-        length: originalOrder.length,
-        width: originalOrder.width,
-        unit: originalOrder.unit,
-        customSizes: originalOrder.customSizes,
-      });
-    }
-
-    // Create the revision order
-    const revisionOrder = await Order.create(revisionData);
-
-    // Update original order to mark as superseded
-    originalOrder.status = 'Superseded';
-    originalOrder.notes = (originalOrder.notes || '') + `\n[Superseded by revision order ${revisionOrder.orderNumber} on ${new Date().toLocaleDateString()}]`;
-    await originalOrder.save();
-
-    // Notify admins about new revision order
-    const admins = await User.find({ role: 'admin' });
-    const io = req.app.get('io');
-
-    const notification = await Notification.create({
-      userId: admins[0]?._id, // Notify first admin (or loop through all)
-      orderId: revisionOrder._id,
-      type: 'revision_order_created',
-      title: `Revision Order Created: ${revisionOrder.orderNumber}`,
-      message: `Customer requested revision for order ${originalOrder.orderNumber}. New order ${revisionOrder.orderNumber} created.`,
-    });
-
-    admins.forEach(a => {
-      io.to(`user-${a._id}`).emit('newRevisionOrder', revisionOrder);
-      io.to(`user-${a._id}`).emit('newNotification', notification);
-    });
-
-    // Notify customer
-    const customerNotif = await Notification.create({
-      userId: req.user._id,
-      orderId: revisionOrder._id,
-      type: 'revision_order_created',
-      title: 'Revision Order Created',
-      message: `Your revision request has been received. New order ${revisionOrder.orderNumber} created.`,
-    });
-    io.to(`user-${req.user._id}`).emit('newNotification', customerNotif);
-
-    res.json({ success: true, revisionOrder, originalOrder });
-  } catch (error) {
-    console.error('❌ Failed to create revision order:', error);
-    res.status(500).json({ success: false, message: 'Failed to create revision order', error: error.message });
-  }
-});
 
 /* ================================
    CUSTOMER APPROVE / REQUEST REVISION
@@ -808,6 +723,8 @@ router.put('/:id', protect, async (req, res) => {
 
     if (req.user.role === 'admin' || (req.user.role === 'employee' && order.assignedTo?.toString() === req.user._id.toString())) {
       const { status, rejectedReason, report } = req.body;
+      const previousStatus = order.status; // Capture previous status for email
+
       if (status) order.status = status;
       if (rejectedReason) order.rejectedReason = rejectedReason;
       if (report) order.report = report; // employee report field
@@ -827,6 +744,19 @@ router.put('/:id', protect, async (req, res) => {
       // Notify Admins
       const admins = await User.find({ role: 'admin' });
       admins.forEach(a => io.to(`user-${a._id}`).emit('adminOrderUpdate', order));
+
+      // 📧 Send status update email to customer (non-blocking)
+      if (status && status !== previousStatus) {
+        try {
+          const customer = await User.findById(order.customerId);
+          if (customer) {
+            await sendCustomerStatusUpdateEmail(customer, order, previousStatus);
+            console.log(`📧 Status update email sent to ${customer.email}`);
+          }
+        } catch (emailError) {
+          console.error('⚠️ Failed to send status update email:', emailError);
+        }
+      }
 
       return res.json({ success: true, order });
     }
