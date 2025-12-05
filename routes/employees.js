@@ -82,11 +82,12 @@ router.post("/", protect, authorize("admin"), async (req, res) => {
     res.status(201).json({
       success: true,
       employee: {
-        id: employee._id,
+        _id: employee._id,
         name: employee.name,
         email: employee.email,
         role: employee.role,
         employeeRole: employee.employeeRole,
+        isActive: employee.isActive,
       },
     });
   } catch (error) {
