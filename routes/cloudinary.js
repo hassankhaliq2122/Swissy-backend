@@ -11,14 +11,22 @@ const upload = multer({
     storage: multer.memoryStorage(), // Store in memory, not disk
     limits: { fileSize: 16 * 1024 * 1024 }, // 16MB limit
     fileFilter: (req, file, cb) => {
-        const allowedTypes = /jpeg|jpg|png|pdf|svg|ai|eps|cdr|webp/;
-        const extname = allowedTypes.test(file.originalname.toLowerCase());
-        const mimetype = allowedTypes.test(file.mimetype);
+        // Extract file extension
+        const ext = file.originalname.toLowerCase().split('.').pop();
 
-        if (extname && mimetype) {
+        // Common image MIME types
+        const imageMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/svg+xml'];
+
+        // Design files (check by extension since MIME types vary)
+        const designExtensions = ['ai', 'eps', 'cdr', 'pdf'];
+
+        const isImage = imageMimeTypes.includes(file.mimetype);
+        const isDesignFile = designExtensions.includes(ext);
+
+        if (isImage || isDesignFile) {
             return cb(null, true);
         } else {
-            cb(new Error('Invalid file type. Only images and design files allowed.'));
+            cb(new Error('Invalid file type. Only images and design files (.ai, .eps, .cdr, .pdf, .svg) allowed.'));
         }
     }
 });
