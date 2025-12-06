@@ -7,7 +7,7 @@ const Invoice = require('../models/Invoice');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
-const { sendOrderAssignmentEmail, sendBulkOrderAssignmentEmail, sendCustomerOrderConfirmation, sendAdminNewOrderEmail, sendCustomerStatusUpdateEmail } = require('../utils/emailService');
+const { sendOrderAssignmentEmail, sendBulkOrderAssignmentEmail, sendCustomerOrderConfirmation, sendAdminNewOrderEmail, sendCustomerStatusUpdateEmail, sendTrackingNumberEmail } = require('../utils/emailService');
 const router = express.Router();
 
 /* ================================
@@ -180,9 +180,14 @@ router.post('/', protect, upload.array('files', 5), async (req, res) => {
       console.log('📧 Customer confirmation email sent');
 
       // Admin notification emails
-      const admins = await User.find({ role: 'admin' });
-      for (const admin of admins) {
-        await sendAdminNewOrderEmail(admin.email, order, req.user);
+      const adminEmail = process.env.ADMIN_EMAIL; // Override with env variable
+      if (adminEmail) {
+        await sendAdminNewOrderEmail(adminEmail, order, req.user);
+      } else {
+        const admins = await User.find({ role: 'admin' });
+        for (const admin of admins) {
+          await sendAdminNewOrderEmail(admin.email, order, req.user);
+        }
       }
       console.log('📧 Admin notification emails sent');
     } catch (emailError) {
@@ -722,23 +727,29 @@ router.put('/:id', protect, async (req, res) => {
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
     if (req.user.role === 'admin' || (req.user.role === 'employee' && order.assignedTo?.toString() === req.user._id.toString())) {
-      const { status, rejectedReason, report } = req.body;
+      const { status, rejectedReason, report, trackingNumber } = req.body;
       const previousStatus = order.status; // Capture previous status for email
+      const previousTrackingNumber = order.trackingNumber; // Capture previous tracking number
 
       if (status) order.status = status;
       if (rejectedReason) order.rejectedReason = rejectedReason;
       if (report) order.report = report; // employee report field
+      if (trackingNumber !== undefined) order.trackingNumber = trackingNumber; // admin can set tracking number
       await order.save();
 
-      // Notify Customer
-      const notification = await Notification.create({
-        userId: order.customerId,
-        orderId: order._id,
-        type: 'order_status_changed',
-        title: `Order ${order.orderNumber} Updated`,
-        message: `Your order status has been updated to ${order.status}.`,
-      });
-      io.to(`user-${order.customerId}`).emit('newNotification', notification);
+      // Notify Customer of status change (only if status actually changed)
+      if (status && status !== previousStatus) {
+        const notification = await Notification.create({
+          userId: order.customerId,
+          orderId: order._id,
+          type: 'order_status_changed',
+          title: `Order ${order.orderNumber} Updated`,
+          message: `Your order status has been updated to ${order.status}.`,
+        });
+        io.to(`user-${order.customerId}`).emit('newNotification', notification);
+      }
+
+      // Always emit order update for real-time sync
       io.to(`user-${order.customerId}`).emit('orderUpdate', order);
 
       // Notify Admins
@@ -755,6 +766,30 @@ router.put('/:id', protect, async (req, res) => {
           }
         } catch (emailError) {
           console.error('⚠️ Failed to send status update email:', emailError);
+        }
+      }
+
+      // 🚚 Send tracking number update notification and email (non-blocking)
+      if (trackingNumber && trackingNumber !== previousTrackingNumber && order.orderType === 'patches') {
+        try {
+          const customer = await User.findById(order.customerId);
+          if (customer) {
+            // Create tracking number notification
+            const trackingNotification = await Notification.create({
+              userId: order.customerId,
+              orderId: order._id,
+              type: 'tracking_number_added',
+              title: `🚚 Tracking Number Added`,
+              message: `Your order ${order.orderNumber} has been shipped! Tracking number: ${trackingNumber}`,
+            });
+            io.to(`user-${order.customerId}`).emit('newNotification', trackingNotification);
+
+            // Send tracking number email
+            await sendTrackingNumberEmail(customer, order, trackingNumber);
+            console.log(`📧 Tracking number email sent to ${customer.email}`);
+          }
+        } catch (emailError) {
+          console.error('⚠️ Failed to send tracking number notification/email:', emailError);
         }
       }
 
