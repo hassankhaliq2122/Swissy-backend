@@ -1,47 +1,53 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const PDFDocument = require('pdfkit');
 const streamBuffers = require('stream-buffers');
 
 /* ===============================
-   SETUP EMAIL TRANSPORTER
+   SETUP RESEND CLIENT
 =============================== */
-let transporter = null;
+let resend = null;
 
-if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-  transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-    port: process.env.EMAIL_PORT || 587,
-    secure: false, // true for 465, false for other ports
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
+if (process.env.RESEND_API_KEY) {
+  resend = new Resend(process.env.RESEND_API_KEY);
 } else {
-  console.warn('⚠️ Email credentials not configured. Emails will not be sent.');
+  console.warn('⚠️ Resend API Key not configured. Emails will not be sent.');
 }
 
 /* ===============================
    GENERAL EMAIL FUNCTION
 =============================== */
 exports.sendEmail = async ({ email, subject, html, attachments }) => {
-  if (!transporter) {
+  if (!resend) {
     console.warn('⚠️ Email service not configured. Skipping sendEmail.');
     return null;
   }
 
   try {
-    const mailOptions = {
-      from: `SwissEmbro <${process.env.EMAIL_USER}>`,
+    const fromEmail = process.env.EMAIL_FROM || 'onboarding@resend.dev';
+
+    const emailOptions = {
+      from: `SwissEmbro <${fromEmail}>`,
       to: email,
       subject,
       html,
-      attachments: attachments || [],
     };
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`✅ Email sent to ${email}: ${info.messageId}`);
-    return info;
+    if (attachments && attachments.length > 0) {
+      emailOptions.attachments = attachments.map(att => ({
+        filename: att.filename,
+        content: att.content, // Resend expects Buffer or string content
+      }));
+    }
+
+    const data = await resend.emails.send(emailOptions);
+
+    if (data.error) {
+      console.error(`❌ Failed to send email to ${email}:`, data.error);
+      return null;
+    }
+
+    console.log(`✅ Email sent to ${email}: ${data.id}`);
+    return data;
   } catch (error) {
     console.error(`❌ Failed to send email to ${email}:`, error);
     return null;
@@ -744,6 +750,118 @@ exports.sendCustomerStatusUpdateEmail = async (customer, order, previousStatus) 
   return await exports.sendEmail({
     email: customer.email,
     subject: `📦 Order ${order.orderNumber} - Status: ${order.status}`,
+    html,
+  });
+};
+
+/* ===============================
+   CUSTOMER TRACKING NUMBER UPDATE
+=============================== */
+exports.sendTrackingNumberEmail = async (customer, order, trackingNumber) => {
+  if (!customer?.email) {
+    console.warn('⚠️ Customer has no email. Skipping tracking number email.');
+    return null;
+  }
+
+  const orderLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/customer/patches-records`;
+
+  // Get design name based on order  type
+  const designName = order.orderType === 'patches'
+    ? (order.patchDesignName || 'N/A')
+    : (order.designName || 'N/A');
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
+      <!-- Header -->
+      <div style="background: linear-gradient(135deg, #000 0%, #1a1a1a 100%); padding: 30px; text-align: center;">
+        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">🚚 Your Order is On The Way!</h1>
+        <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">SwissEmbro - Tracking Number Added</p>
+      </div>
+
+      <!-- Main Content -->
+      <div style="padding: 40px 30px; background: #f9f9f9;">
+        <p style="color: #555; font-size: 16px; line-height: 1.6;">
+          Hello <strong>${customer.name}</strong>,
+        </p>
+        
+        <p style="color: #555; font-size: 16px; line-height: 1.6;">
+          Great news! Your order has been shipped and we've added a tracking number to your order. You can now track your shipment in real-time.
+        </p>
+
+        <!-- Tracking Number Card -->
+        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 30px; margin: 25px 0; border-radius: 12px; text-align: center; box-shadow: 0 6px 12px rgba(16, 185, 129, 0.3);">
+          <p style="color: #fff; margin: 0 0 10px 0; font-size: 14px; text-transform: uppercase; letter-spacing: 2px;">Your Tracking Number</p>
+          <div style="background: #fff; padding: 20px; border-radius: 8px; margin: 15px 0;">
+            <p style="color: #000; margin: 0; font-size: 32px; font-weight: bold; font-family: 'Courier New', monospace; letter-spacing: 2px;">
+              ${trackingNumber}
+            </p>
+          </div>
+          <p style="color: #fff; margin: 15px 0 0 0; font-size: 14px; opacity: 0.9;">
+            Use this number to track your shipment with your courier service
+          </p>
+        </div>
+
+        <!-- Order Details Card -->
+        <div style="background: #fff; border-left: 4px solid #FFDD00; padding: 20px; margin: 25px 0; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+          <h3 style="color: #000; margin-top: 0; font-size: 18px;">📋 Order Details</h3>
+          
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600; width: 40%;">Order Number:</td>
+              <td style="padding: 8px 0; color: #333; font-weight: bold;">${order.orderNumber}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Order Type:</td>
+              <td style="padding: 8px 0; color: #333;">
+                <span style="background: #FFDD00; color: #000; padding: 4px 12px; border-radius: 12px; font-weight: 600; font-size: 14px;">
+                  ${(order.orderType || 'N/A').toUpperCase()}
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Design Name:</td>
+              <td style="padding: 8px 0; color: #333;">${designName}</td>
+            </tr>
+            ${order.patchAddress ? `
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Delivery Address:</td>
+              <td style="padding: 8px 0; color: #333;">${order.patchAddress}</td>
+            </tr>
+            ` : ''}
+          </table>
+        </div>
+
+        <!-- Info Box -->
+        <div style="background: #e0f2fe; border-left: 4px solid #0284c7; padding: 15px; margin: 20px 0; border-radius: 5px;">
+          <p style="margin: 0; color: #075985; font-size: 14px;">
+            <strong>💡 Tip:</strong> You can track your order using this tracking number on your courier's website (DHL, UPS, FedEx, etc.)
+          </p>
+        </div>
+
+        <!-- Action Button -->
+        <div style="text-align: center; margin: 35px 0 25px 0;">
+          <a href="${orderLink}" 
+             style="background: #FFDD00; color: #000; padding: 14px 35px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold; font-size: 16px; box-shadow: 0 3px 6px rgba(0,0,0,0.16);">
+            View Order Details →
+          </a>
+        </div>
+
+        <p style="color: #666; font-size: 14px; line-height: 1.6; margin-top: 30px; text-align: center;">
+          Thank you for choosing SwissEmbro. Your order is on its way to you!
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <div style="background: #000; padding: 20px 30px; text-align: center; color: #999; font-size: 13px;">
+        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbro. All rights reserved.</p>
+        <p style="margin: 5px 0;">Questions? Contact us at support@swissembro.com</p>
+      </div>
+    </div>
+  `;
+
+  return await exports.sendEmail({
+    email: customer.email,
+    subject: `🚚 Tracking Number Added: ${order.orderNumber}`,
     html,
   });
 };
