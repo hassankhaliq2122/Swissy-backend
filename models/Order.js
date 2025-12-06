@@ -96,6 +96,7 @@ const orderSchema = new mongoose.Schema({
   patchBackingStyle: { type: String, enum: ['Iron On', 'Sewn On', 'Peel N Stick', 'Velcro M+F'], required: function () { return this.orderType === 'patches'; } },
   patchQuantity: { type: Number, min: 1, required: function () { return this.orderType === 'patches'; } },
   patchAddress: { type: String, required: function () { return this.orderType === 'patches'; } },
+  trackingNumber: { type: String, default: '', trim: true },
 
   /* ==========================================
      DIGITIZING FIELDS
