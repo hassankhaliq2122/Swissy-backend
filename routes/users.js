@@ -1,4 +1,5 @@
 const express = require("express");
+const jwt = require("jsonwebtoken");
 const { protect, authorize } = require("../middleware/auth");
 const User = require("../models/User");
 
@@ -203,6 +204,49 @@ router.get("/", protect, authorize("admin"), async (req, res) => {
   } catch (err) {
     console.error("❌ fetch users error:", err);
     res.status(500).json({ success: false, message: "Failed to fetch users" });
+  }
+});
+
+/* ======================================================
+   ADMIN IMPERSONATE CUSTOMER
+   (Must be defined BEFORE /:id routes)
+   ====================================================== */
+router.post("/:id/impersonate", protect, authorize("admin"), async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select("-password -confirmPassword");
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // Only allow impersonating customers
+    if (user.role !== "customer") {
+      return res.status(400).json({ success: false, message: "Can only impersonate customers" });
+    }
+
+    // Check if user is active
+    if (!user.isActive) {
+      return res.status(400).json({ success: false, message: "Cannot impersonate inactive user" });
+    }
+
+    // Generate token for the customer (1 day expiry for impersonation)
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1d" });
+
+    console.log(`🔐 Admin ${req.user.email} impersonating customer ${user.email}`);
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        username: user.username,
+      },
+    });
+  } catch (err) {
+    console.error("❌ impersonate user error:", err);
+    res.status(500).json({ success: false, message: "Failed to impersonate user" });
   }
 });
 
