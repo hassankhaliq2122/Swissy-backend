@@ -9,30 +9,21 @@ const streamBuffers = require("stream-buffers");
 /* ===============================
    GENERAL EMAIL FUNCTION
 =============================== */
-const sendEmail = async ({ email, subject, html, attachments }) => {
+const Resend = require("resend").Resend;
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+const sendEmail = async ({ email, subject, html }) => {
   try {
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.warn(
-        "⚠️ Email credentials not configured. Emails will not be sent."
-      );
-      return null;
-    }
-
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-    });
-
-    const info = await transporter.sendMail({
-      from: `SwissEmbro <${process.env.EMAIL_USER}>`,
-      to: email,
+    const res = await resend.emails.send({
+      from: "SwissEmbro <no-reply@swissembropatches.org>",
+      to: [email],
       subject,
       html,
-      attachments: attachments || [],
     });
 
-    console.log(`✅ Email sent to ${email}: ${info.messageId}`);
-    return info;
+    console.log(`✅ Email sent to ${email}`, res);
+    return true;
   } catch (error) {
     console.error(`❌ Failed to send email to ${email}:`, error);
     return null;
