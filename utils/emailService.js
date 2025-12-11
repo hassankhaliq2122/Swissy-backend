@@ -1,45 +1,38 @@
-const nodemailer = require('nodemailer');
-const PDFDocument = require('pdfkit');
-const streamBuffers = require('stream-buffers');
+const nodemailer = require("nodemailer");
+const PDFDocument = require("pdfkit");
+const streamBuffers = require("stream-buffers");
 
 /* ===============================
    SETUP EMAIL TRANSPORTER
 =============================== */
-let transporter = null;
-
-if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-  transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-    port: process.env.EMAIL_PORT || 587,
-    secure: false, // true for 465, false for other ports
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
-} else {
-  console.warn('⚠️ Email credentials not configured. Emails will not be sent.');
-}
 
 /* ===============================
    GENERAL EMAIL FUNCTION
 =============================== */
-exports.sendEmail = async ({ email, subject, html, attachments }) => {
-  if (!transporter) {
-    console.warn('⚠️ Email service not configured. Skipping sendEmail.');
-    return null;
-  }
-
+const sendEmail = async ({ email, subject, html, attachments }) => {
   try {
-    const mailOptions = {
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.warn(
+        "⚠️ Email credentials not configured. Emails will not be sent."
+      );
+      return null;
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    });
+
+    const info = await transporter.sendMail({
       from: `SwissEmbro <${process.env.EMAIL_USER}>`,
       to: email,
       subject,
       html,
       attachments: attachments || [],
-    };
+    });
 
-    const info = await transporter.sendMail(mailOptions);
     console.log(`✅ Email sent to ${email}: ${info.messageId}`);
     return info;
   } catch (error) {
@@ -48,89 +41,42 @@ exports.sendEmail = async ({ email, subject, html, attachments }) => {
   }
 };
 
-/* ===============================
-   ORDER NOTIFICATIONS
-=============================== */
-exports.sendOrderNotification = async (adminEmail, orderNumber, customerName) => {
-  const html = `
-    <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #FFDD00; background: #000; padding: 15px; text-align: center;">
-        New Order Received
-      </h2>
-      <div style="padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px;">
-        <p><strong>Order Number:</strong> ${orderNumber}</p>
-        <p><strong>Customer:</strong> ${customerName}</p>
-        <p>A new order has been placed and is awaiting your review.</p>
-        <p style="margin-top: 20px;">
-          <a href="${process.env.ADMIN_URL || 'http://localhost:5174'}/orders" 
-             style="background: #FFDD00; color: #000; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
-            View Orders
-          </a>
-        </p>
-      </div>
-    </div>
-  `;
-
-  return await exports.sendEmail({
-    email: adminEmail,
-    subject: `New Order: ${orderNumber}`,
-    html,
-  });
-};
-
-exports.sendOrderStatusUpdate = async (customerEmail, orderNumber, status) => {
-  const html = `
-    <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #FFDD00; background: #000; padding: 15px; text-align: center;">
-        Order Status Update
-      </h2>
-      <div style="padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px;">
-        <p><strong>Order Number:</strong> ${orderNumber}</p>
-        <p><strong>New Status:</strong> ${status}</p>
-        <p>Your order status has been updated.</p>
-        <p style="margin-top: 20px;">
-          <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/orders" 
-             style="background: #FFDD00; color: #000; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
-            View Order
-          </a>
-        </p>
-      </div>
-    </div>
-  `;
-
-  return await exports.sendEmail({
-    email: customerEmail,
-    subject: `Order ${orderNumber} Status Update`,
-    html,
-  });
-};
+exports.sendEmail = sendEmail;
 
 /* ===============================
    GENERATE PDF INVOICE
 =============================== */
 const generateInvoicePDF = async (invoice, customer) => {
-  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+  const doc = new PDFDocument({ size: "A4", margin: 50 });
   const bufferStream = new streamBuffers.WritableStreamBuffer();
 
   doc.pipe(bufferStream);
 
   // Header
-  doc.fontSize(20).text('SwissEmbro', { align: 'center' });
+  doc.fontSize(20).text("SwissEmbro", { align: "center" });
   doc.moveDown();
-  doc.fontSize(16).text(`Invoice: ${invoice.invoiceNumber}`, { align: 'center' });
+  doc
+    .fontSize(16)
+    .text(`Invoice: ${invoice.invoiceNumber}`, { align: "center" });
   doc.moveDown(2);
 
   // Customer Info
   doc.fontSize(12).text(`Billed To: ${customer.name}`);
   if (customer.address) {
-    doc.text(`${customer.address.street}, ${customer.address.city}, ${customer.address.state}, ${customer.address.zipCode}`);
+    doc.text(
+      `${customer.address.street}, ${customer.address.city}, ${customer.address.state}, ${customer.address.zipCode}`
+    );
   }
   doc.moveDown();
 
   // Table Header
-  doc.fontSize(12).text('Items:', { underline: true });
+  doc.fontSize(12).text("Items:", { underline: true });
   invoice.items.forEach((item, i) => {
-    doc.text(`${i + 1}. ${item.description} - ${item.quantity} × $${item.price.toFixed(2)} = $${(item.quantity * item.price).toFixed(2)}`);
+    doc.text(
+      `${i + 1}. ${item.description} - ${item.quantity} × $${item.price.toFixed(
+        2
+      )} = $${(item.quantity * item.price).toFixed(2)}`
+    );
   });
 
   doc.moveDown();
@@ -138,14 +84,14 @@ const generateInvoicePDF = async (invoice, customer) => {
   doc.text(`Tax: $${invoice.tax.toFixed(2)}`);
   doc.text(`Total: $${invoice.total.toFixed(2)}`);
   doc.moveDown();
-  doc.text(`Notes: ${invoice.notes || 'N/A'}`);
+  doc.text(`Notes: ${invoice.notes || "N/A"}`);
   if (invoice.dueDate) doc.text(`Due Date: ${invoice.dueDate.toDateString()}`);
 
   doc.end();
 
   return new Promise((resolve, reject) => {
-    bufferStream.on('finish', () => resolve(bufferStream.getContents()));
-    bufferStream.on('error', reject);
+    bufferStream.on("finish", () => resolve(bufferStream.getContents()));
+    bufferStream.on("error", reject);
   });
 };
 
@@ -154,11 +100,13 @@ const generateInvoicePDF = async (invoice, customer) => {
 =============================== */
 exports.sendInvoiceEmail = async (customer, invoice) => {
   if (!customer.email) {
-    console.warn('⚠️ Customer has no email. Skipping invoice email.');
+    console.warn("⚠️ Customer has no email. Skipping invoice email.");
     return null;
   }
 
-  const paymentLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/invoices/pay/${invoice._id}`;
+  const paymentLink = `${
+    process.env.FRONTEND_URL || "http://localhost:5173"
+  }/invoices/pay/${invoice._id}`;
   const pdfBuffer = await generateInvoicePDF(invoice, customer);
 
   const html = `
@@ -181,7 +129,7 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
     </div>
   `;
 
-  return await exports.sendEmail({
+  return sendEmail({
     email: customer.email,
     subject: `Invoice ${invoice.invoiceNumber} - SwissEmbro`,
     html,
@@ -197,18 +145,25 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
 /* ===============================
    ORDER ASSIGNMENT EMAIL (Single)
 =============================== */
-exports.sendOrderAssignmentEmail = async (employee, order, assignedBy = 'Admin') => {
+exports.sendOrderAssignmentEmail = async (
+  employee,
+  order,
+  assignedBy = "Admin"
+) => {
   if (!employee.email) {
-    console.warn('⚠️ Employee has no email. Skipping assignment email.');
+    console.warn("⚠️ Employee has no email. Skipping assignment email.");
     return null;
   }
 
-  const orderLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/employee/orders`;
+  const orderLink = `${
+    process.env.FRONTEND_URL || "http://localhost:3000"
+  }/employee/orders`;
 
   // Get design name based on order type
-  const designName = order.orderType === 'patches'
-    ? (order.patchDesignName || 'N/A')
-    : (order.designName || 'N/A');
+  const designName =
+    order.orderType === "patches"
+      ? order.patchDesignName || "N/A"
+      : order.designName || "N/A";
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
@@ -237,7 +192,9 @@ exports.sendOrderAssignmentEmail = async (employee, order, assignedBy = 'Admin')
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600; width: 40%;">Order Number:</td>
-              <td style="padding: 8px 0; color: #333; font-weight: bold;">${order.orderNumber}</td>
+              <td style="padding: 8px 0; color: #333; font-weight: bold;">${
+                order.orderNumber
+              }</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600;">Order Type:</td>
@@ -253,7 +210,9 @@ exports.sendOrderAssignmentEmail = async (employee, order, assignedBy = 'Admin')
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600;">Customer:</td>
-              <td style="padding: 8px 0; color: #333;">${order.customerId?.name || 'N/A'}</td>
+              <td style="padding: 8px 0; color: #333;">${
+                order.customerId?.name || "N/A"
+              }</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600;">Current Status:</td>
@@ -265,18 +224,25 @@ exports.sendOrderAssignmentEmail = async (employee, order, assignedBy = 'Admin')
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600;">Assigned Date:</td>
-              <td style="padding: 8px 0; color: #333;">${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</td>
+              <td style="padding: 8px 0; color: #333;">${new Date().toLocaleDateString(
+                "en-US",
+                { year: "numeric", month: "long", day: "numeric" }
+              )}</td>
             </tr>
           </table>
         </div>
 
-        ${order.notes ? `
+        ${
+          order.notes
+            ? `
         <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px;">
           <p style="margin: 0; color: #856404; font-size: 14px;">
             <strong>📝 Notes:</strong> ${order.notes}
           </p>
         </div>
-        ` : ''}
+        `
+            : ""
+        }
 
         <!-- Action Button -->
         <div style="text-align: center; margin: 35px 0 25px 0;">
@@ -299,7 +265,7 @@ exports.sendOrderAssignmentEmail = async (employee, order, assignedBy = 'Admin')
     </div>
   `;
 
-  return await exports.sendEmail({
+  return sendEmail({
     email: employee.email,
     subject: `🎯 New Order Assigned: ${order.orderNumber}`,
     html,
@@ -309,35 +275,52 @@ exports.sendOrderAssignmentEmail = async (employee, order, assignedBy = 'Admin')
 /* ===============================
    BULK ORDER ASSIGNMENT EMAIL
 =============================== */
-exports.sendBulkOrderAssignmentEmail = async (employee, orders, assignedBy = 'Admin') => {
+exports.sendBulkOrderAssignmentEmail = async (
+  employee,
+  orders,
+  assignedBy = "Admin"
+) => {
   if (!employee.email) {
-    console.warn('⚠️ Employee has no email. Skipping bulk assignment email.');
+    console.warn("⚠️ Employee has no email. Skipping bulk assignment email.");
     return null;
   }
 
-  const orderLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/employee/orders`;
+  const orderLink = `${
+    process.env.FRONTEND_URL || "http://localhost:3000"
+  }/employee/orders`;
   const orderCount = orders.length;
 
   // Create order rows for the table
-  const orderRows = orders.map((order, index) => {
-    const designName = order.orderType === 'patches'
-      ? (order.patchDesignName || 'N/A')
-      : (order.designName || 'N/A');
+  const orderRows = orders
+    .map((order, index) => {
+      const designName =
+        order.orderType === "patches"
+          ? order.patchDesignName || "N/A"
+          : order.designName || "N/A";
 
-    return `
-      <tr style="${index % 2 === 0 ? 'background: #f9f9f9;' : 'background: #fff;'}">
-        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; text-align: center;">${index + 1}</td>
-        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; font-weight: 600; color: #333;">${order.orderNumber}</td>
+      return `
+      <tr style="${
+        index % 2 === 0 ? "background: #f9f9f9;" : "background: #fff;"
+      }">
+        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; text-align: center;">${
+          index + 1
+        }</td>
+        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; font-weight: 600; color: #333;">${
+          order.orderNumber
+        }</td>
         <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0;">
           <span style="background: #FFDD00; color: #000; padding: 3px 10px; border-radius: 10px; font-size: 12px; font-weight: 600;">
             ${order.orderType.toUpperCase()}
           </span>
         </td>
         <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; color: #555;">${designName}</td>
-        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; color: #555;">${order.customerId?.name || 'N/A'}</td>
+        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; color: #555;">${
+          order.customerId?.name || "N/A"
+        }</td>
       </tr>
     `;
-  }).join('');
+    })
+    .join("");
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 750px; margin: 0 auto; background: #fff;">
@@ -364,7 +347,10 @@ exports.sendBulkOrderAssignmentEmail = async (employee, orders, assignedBy = 'Ad
           <h3 style="color: #000; margin: 0 0 10px 0; font-size: 20px;">📦 Assignment Summary</h3>
           <p style="color: #000; margin: 0; font-size: 36px; font-weight: bold;">${orderCount}</p>
           <p style="color: #000; margin: 5px 0 0 0; font-size: 16px;">New Orders</p>
-          <p style="color: #333; margin: 15px 0 0 0; font-size: 14px;">Assigned on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+          <p style="color: #333; margin: 15px 0 0 0; font-size: 14px;">Assigned on ${new Date().toLocaleDateString(
+            "en-US",
+            { year: "numeric", month: "long", day: "numeric" }
+          )}</p>
         </div>
 
         <!-- Orders Table -->
@@ -408,7 +394,7 @@ exports.sendBulkOrderAssignmentEmail = async (employee, orders, assignedBy = 'Ad
     </div>
   `;
 
-  return await exports.sendEmail({
+  return sendEmail({
     email: employee.email,
     subject: `🎯 ${orderCount} New Orders Assigned to You`,
     html,
@@ -420,16 +406,21 @@ exports.sendBulkOrderAssignmentEmail = async (employee, orders, assignedBy = 'Ad
 =============================== */
 exports.sendCustomerOrderConfirmation = async (customer, order) => {
   if (!customer.email) {
-    console.warn('⚠️ Customer has no email. Skipping order confirmation email.');
+    console.warn(
+      "⚠️ Customer has no email. Skipping order confirmation email."
+    );
     return null;
   }
 
   // Get design name based on order type
-  const designName = order.orderType === 'patches'
-    ? (order.patchDesignName || 'N/A')
-    : (order.designName || 'N/A');
+  const designName =
+    order.orderType === "patches"
+      ? order.patchDesignName || "N/A"
+      : order.designName || "N/A";
 
-  const orderLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/customer/orders`;
+  const orderLink = `${
+    process.env.FRONTEND_URL || "http://localhost:3000"
+  }/customer/orders`;
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
@@ -458,7 +449,9 @@ exports.sendCustomerOrderConfirmation = async (customer, order) => {
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600; width: 40%;">Order Number:</td>
-              <td style="padding: 8px 0; color: #333; font-weight: bold;">${order.orderNumber}</td>
+              <td style="padding: 8px 0; color: #333; font-weight: bold;">${
+                order.orderNumber
+              }</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600;">Order Type:</td>
@@ -482,18 +475,25 @@ exports.sendCustomerOrderConfirmation = async (customer, order) => {
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600;">Order Date:</td>
-              <td style="padding: 8px 0; color: #333;">${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</td>
+              <td style="padding: 8px 0; color: #333;">${new Date().toLocaleDateString(
+                "en-US",
+                { year: "numeric", month: "long", day: "numeric" }
+              )}</td>
             </tr>
           </table>
         </div>
 
-        ${order.notes ? `
+        ${
+          order.notes
+            ? `
         <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px;">
           <p style="margin: 0; color: #856404; font-size: 14px;">
             <strong>📝 Notes:</strong> ${order.notes}
           </p>
         </div>
-        ` : ''}
+        `
+            : ""
+        }
 
         <!-- Action Button -->
         <div style="text-align: center; margin: 35px 0 25px 0;">
@@ -516,7 +516,7 @@ exports.sendCustomerOrderConfirmation = async (customer, order) => {
     </div>
   `;
 
-  return await exports.sendEmail({
+  return sendEmail({
     email: customer.email,
     subject: `✅ Order Confirmed: ${order.orderNumber}`,
     html,
@@ -528,16 +528,19 @@ exports.sendCustomerOrderConfirmation = async (customer, order) => {
 =============================== */
 exports.sendAdminNewOrderEmail = async (adminEmail, order, customer) => {
   if (!adminEmail) {
-    console.warn('⚠️ Admin has no email. Skipping new order email.');
+    console.warn("⚠️ Admin has no email. Skipping new order email.");
     return null;
   }
 
   // Get design name based on order type
-  const designName = order.orderType === 'patches'
-    ? (order.patchDesignName || 'N/A')
-    : (order.designName || 'N/A');
+  const designName =
+    order.orderType === "patches"
+      ? order.patchDesignName || "N/A"
+      : order.designName || "N/A";
 
-  const orderLink = `${process.env.ADMIN_URL || 'http://localhost:5174'}/orders`;
+  const orderLink = `${
+    process.env.ADMIN_URL || "http://localhost:5174"
+  }/orders`;
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
@@ -560,20 +563,24 @@ exports.sendAdminNewOrderEmail = async (adminEmail, order, customer) => {
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="padding: 10px 0; color: #666; font-weight: 600; width: 40%; border-bottom: 1px solid #eee;">Order Number:</td>
-              <td style="padding: 10px 0; color: #333; font-weight: bold; border-bottom: 1px solid #eee;">${order.orderNumber}</td>
+              <td style="padding: 10px 0; color: #333; font-weight: bold; border-bottom: 1px solid #eee;">${
+                order.orderNumber
+              }</td>
             </tr>
             <tr>
               <td style="padding: 10px 0; color: #666; font-weight: 600; border-bottom: 1px solid #eee;">Customer:</td>
               <td style="padding: 10px 0; color: #333; border-bottom: 1px solid #eee;">
-                <strong>${customer?.name || 'N/A'}</strong><br>
-                <span style="color: #666; font-size: 13px;">${customer?.email || ''}</span>
+                <strong>${customer?.name || "N/A"}</strong><br>
+                <span style="color: #666; font-size: 13px;">${
+                  customer?.email || ""
+                }</span>
               </td>
             </tr>
             <tr>
               <td style="padding: 10px 0; color: #666; font-weight: 600; border-bottom: 1px solid #eee;">Order Type:</td>
               <td style="padding: 10px 0; color: #333; border-bottom: 1px solid #eee;">
                 <span style="background: #FFDD00; color: #000; padding: 4px 12px; border-radius: 12px; font-weight: 600; font-size: 14px;">
-                  ${(order.orderType || 'N/A').toUpperCase()}
+                  ${(order.orderType || "N/A").toUpperCase()}
                 </span>
               </td>
             </tr>
@@ -583,18 +590,31 @@ exports.sendAdminNewOrderEmail = async (adminEmail, order, customer) => {
             </tr>
             <tr>
               <td style="padding: 10px 0; color: #666; font-weight: 600;">Order Date:</td>
-              <td style="padding: 10px 0; color: #333;">${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+              <td style="padding: 10px 0; color: #333;">${new Date().toLocaleDateString(
+                "en-US",
+                {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }
+              )}</td>
             </tr>
           </table>
         </div>
 
-        ${order.notes ? `
+        ${
+          order.notes
+            ? `
         <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px;">
           <p style="margin: 0; color: #856404; font-size: 14px;">
             <strong>📝 Customer Notes:</strong> ${order.notes}
           </p>
         </div>
-        ` : ''}
+        `
+            : ""
+        }
 
         <!-- Action Button -->
         <div style="text-align: center; margin: 35px 0 25px 0;">
@@ -617,9 +637,11 @@ exports.sendAdminNewOrderEmail = async (adminEmail, order, customer) => {
     </div>
   `;
 
-  return await exports.sendEmail({
+  return sendEmail({
     email: adminEmail,
-    subject: `🆕 New Order: ${order.orderNumber} from ${customer?.name || 'Customer'}`,
+    subject: `🆕 New Order: ${order.orderNumber} from ${
+      customer?.name || "Customer"
+    }`,
     html,
   });
 };
@@ -627,32 +649,42 @@ exports.sendAdminNewOrderEmail = async (adminEmail, order, customer) => {
 /* ===============================
    CUSTOMER ORDER STATUS UPDATE
 =============================== */
-exports.sendCustomerStatusUpdateEmail = async (customer, order, previousStatus) => {
+exports.sendCustomerStatusUpdateEmail = async (
+  customer,
+  order,
+  previousStatus
+) => {
   if (!customer?.email) {
-    console.warn('⚠️ Customer has no email. Skipping status update email.');
+    console.warn("⚠️ Customer has no email. Skipping status update email.");
     return null;
   }
 
-  const orderLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/customer/orders`;
+  const orderLink = `${
+    process.env.FRONTEND_URL || "http://localhost:3000"
+  }/customer/orders`;
 
   // Status color mapping
   const statusColors = {
-    'Pending': { bg: '#fff3cd', text: '#856404' },
-    'In Progress': { bg: '#cce5ff', text: '#004085' },
-    'Waiting for Approval': { bg: '#d4edda', text: '#155724' },
-    'Completed': { bg: '#d4edda', text: '#155724' },
-    'Delivered': { bg: '#d4edda', text: '#155724' },
-    'Revision Ready': { bg: '#e2e3e5', text: '#383d41' },
-    'Rejected': { bg: '#f8d7da', text: '#721c24' },
-    'Cancelled': { bg: '#f8d7da', text: '#721c24' },
+    Pending: { bg: "#fff3cd", text: "#856404" },
+    "In Progress": { bg: "#cce5ff", text: "#004085" },
+    "Waiting for Approval": { bg: "#d4edda", text: "#155724" },
+    Completed: { bg: "#d4edda", text: "#155724" },
+    Delivered: { bg: "#d4edda", text: "#155724" },
+    "Revision Ready": { bg: "#e2e3e5", text: "#383d41" },
+    Rejected: { bg: "#f8d7da", text: "#721c24" },
+    Cancelled: { bg: "#f8d7da", text: "#721c24" },
   };
 
-  const statusStyle = statusColors[order.status] || { bg: '#e2e3e5', text: '#383d41' };
+  const statusStyle = statusColors[order.status] || {
+    bg: "#e2e3e5",
+    text: "#383d41",
+  };
 
   // Get design name based on order type
-  const designName = order.orderType === 'patches'
-    ? (order.patchDesignName || 'N/A')
-    : (order.designName || 'N/A');
+  const designName =
+    order.orderType === "patches"
+      ? order.patchDesignName || "N/A"
+      : order.designName || "N/A";
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
@@ -677,12 +709,16 @@ exports.sendCustomerStatusUpdateEmail = async (customer, order, previousStatus) 
           <p style="color: #666; margin: 0 0 15px 0; font-size: 14px;">Status Changed From</p>
           <div style="display: inline-block; margin-bottom: 15px;">
             <span style="background: #e2e3e5; color: #383d41; padding: 8px 20px; border-radius: 20px; font-weight: 600; font-size: 16px; text-decoration: line-through;">
-              ${previousStatus || 'Previous'}
+              ${previousStatus || "Previous"}
             </span>
           </div>
           <p style="color: #666; margin: 10px 0; font-size: 20px;">↓</p>
           <div style="display: inline-block;">
-            <span style="background: ${statusStyle.bg}; color: ${statusStyle.text}; padding: 12px 25px; border-radius: 25px; font-weight: 700; font-size: 18px; border: 2px solid ${statusStyle.text};">
+            <span style="background: ${statusStyle.bg}; color: ${
+    statusStyle.text
+  }; padding: 12px 25px; border-radius: 25px; font-weight: 700; font-size: 18px; border: 2px solid ${
+    statusStyle.text
+  };">
               ${order.status}
             </span>
           </div>
@@ -695,13 +731,15 @@ exports.sendCustomerStatusUpdateEmail = async (customer, order, previousStatus) 
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600; width: 40%;">Order Number:</td>
-              <td style="padding: 8px 0; color: #333; font-weight: bold;">${order.orderNumber}</td>
+              <td style="padding: 8px 0; color: #333; font-weight: bold;">${
+                order.orderNumber
+              }</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600;">Order Type:</td>
               <td style="padding: 8px 0; color: #333;">
                 <span style="background: #FFDD00; color: #000; padding: 4px 12px; border-radius: 12px; font-weight: 600; font-size: 14px;">
-                  ${(order.orderType || 'N/A').toUpperCase()}
+                  ${(order.orderType || "N/A").toUpperCase()}
                 </span>
               </td>
             </tr>
@@ -712,13 +750,17 @@ exports.sendCustomerStatusUpdateEmail = async (customer, order, previousStatus) 
           </table>
         </div>
 
-        ${order.rejectedReason ? `
+        ${
+          order.rejectedReason
+            ? `
         <div style="background: #f8d7da; border-left: 4px solid #721c24; padding: 15px; margin: 20px 0; border-radius: 5px;">
           <p style="margin: 0; color: #721c24; font-size: 14px;">
             <strong>❌ Reason:</strong> ${order.rejectedReason}
           </p>
         </div>
-        ` : ''}
+        `
+            : ""
+        }
 
         <!-- Action Button -->
         <div style="text-align: center; margin: 35px 0 25px 0;">
@@ -741,10 +783,9 @@ exports.sendCustomerStatusUpdateEmail = async (customer, order, previousStatus) 
     </div>
   `;
 
-  return await exports.sendEmail({
+  return sendEmail({
     email: customer.email,
     subject: `📦 Order ${order.orderNumber} - Status: ${order.status}`,
     html,
   });
 };
-
