@@ -1,8 +1,8 @@
-const express = require('express');
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
-const User = require('../models/User');
-const { protect } = require('../middleware/auth');
+const express = require("express");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
+const User = require("../models/User");
+const { protect } = require("../middleware/auth");
 const router = express.Router();
 const { OAuth2Client } = require("google-auth-library");
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -13,10 +13,9 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
  */
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE || '7d',
+    expiresIn: process.env.JWT_EXPIRE || "7d",
   });
 };
-
 
 /**
  * ==========================
@@ -96,14 +95,13 @@ router.post("/google", async (req, res) => {
   }
 });
 
-
 /**
  * ==========================
  * Register (Customer)
  * POST /api/auth/register
  * ==========================
  */
-router.post('/register', async (req, res) => {
+router.post("/register", async (req, res) => {
   try {
     const {
       name,
@@ -131,13 +129,16 @@ router.post('/register', async (req, res) => {
     ) {
       return res
         .status(400)
-        .json({ success: false, message: 'Please fill all required fields' });
+        .json({ success: false, message: "Please fill all required fields" });
     }
 
     if (password.length < 6) {
       return res
         .status(400)
-        .json({ success: false, message: 'Password must be at least 6 characters' });
+        .json({
+          success: false,
+          message: "Password must be at least 6 characters",
+        });
     }
 
     const normalizedEmail = email.toLowerCase().trim();
@@ -149,10 +150,14 @@ router.post('/register', async (req, res) => {
 
     if (existingUser) {
       if (existingUser.email === normalizedEmail) {
-        return res.status(400).json({ success: false, message: 'Email already exists' });
+        return res
+          .status(400)
+          .json({ success: false, message: "Email already exists" });
       }
       if (existingUser.username === normalizedUsername) {
-        return res.status(400).json({ success: false, message: 'Username already exists' });
+        return res
+          .status(400)
+          .json({ success: false, message: "Username already exists" });
       }
     }
 
@@ -162,15 +167,17 @@ router.post('/register', async (req, res) => {
       email: normalizedEmail,
       phone: phone || undefined,
       company: company.trim(),
-      areaOfInterest: areaOfInterest.trim(),
-      country: country ? country.trim() : '',
+      areaOfInterest: Array.isArray(areaOfInterest)
+        ? areaOfInterest
+        : [areaOfInterest],
+      country: country ? country.trim() : "",
       password,
-      role: 'customer', // IMPORTANT: Only customers registered here
+      role: "customer", // IMPORTANT: Only customers registered here
       address: {
-        street: street ? street.trim() : '',
-        city: city ? city.trim() : '',
-        state: state ? state.trim() : '',
-        zipCode: zipCode ? zipCode.trim() : '',
+        street: street ? street.trim() : "",
+        city: city ? city.trim() : "",
+        state: state ? state.trim() : "",
+        zipCode: zipCode ? zipCode.trim() : "",
       },
       isVerified: true,
     });
@@ -179,7 +186,7 @@ router.post('/register', async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Registration successful!',
+      message: "Registration successful!",
       token,
       user: {
         _id: user._id,
@@ -190,10 +197,10 @@ router.post('/register', async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('❌ Registration error:', error);
+    console.error("❌ Registration error:", error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Server error during registration',
+      message: error.message || "Server error during registration",
     });
   }
 });
@@ -204,29 +211,48 @@ router.post('/register', async (req, res) => {
  * POST /api/auth/login
  * ==========================
  */
-router.post('/login', async (req, res) => {
+router.post("/login", async (req, res) => {
   try {
     const { identifier, password } = req.body;
-    if (!identifier || !password) return res.status(400).json({ success: false, message: 'Email/username and password required' });
+    if (!identifier || !password)
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Email/username and password required",
+        });
 
     const user = await User.findOne({
-      $or: [{ email: identifier.toLowerCase() }, { username: identifier.toLowerCase() }]
-    }).select('+password');
+      $or: [
+        { email: identifier.toLowerCase() },
+        { username: identifier.toLowerCase() },
+      ],
+    }).select("+password");
 
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    if (!user)
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
 
-    if (user.authProvider === 'local') {
-      if (!user.password) throw new Error('Password not set for local user');
+    if (user.authProvider === "local") {
+      if (!user.password) throw new Error("Password not set for local user");
       const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) return res.status(401).json({ success: false, message: 'Invalid credentials' });
+      if (!isMatch)
+        return res
+          .status(401)
+          .json({ success: false, message: "Invalid credentials" });
     }
 
     // Allow all roles to login (admin, employee, customer)
-    if (!['admin', 'employee', 'customer'].includes(user.role)) {
-      return res.status(403).json({ success: false, message: 'Access denied' });
+    if (!["admin", "employee", "customer"].includes(user.role)) {
+      return res.status(403).json({ success: false, message: "Access denied" });
     }
 
-    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
 
     res.status(200).json({
       success: true,
@@ -240,8 +266,8 @@ router.post('/login', async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('❌ Login error:', err);
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error("❌ Login error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -251,19 +277,19 @@ router.post('/login', async (req, res) => {
  * GET /api/auth/me
  * ==========================
  */
-router.get('/me', protect, async (req, res) => {
+router.get("/me", protect, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password');
+    const user = await User.findById(req.user._id).select("-password");
 
     res.json({
       success: true,
       user,
     });
   } catch (error) {
-    console.error('❌ Get user error:', error);
+    console.error("❌ Get user error:", error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Server error',
+      message: error.message || "Server error",
     });
   }
 });

@@ -5,12 +5,30 @@ const userSchema = new mongoose.Schema(
   {
     // Basic Profile
     name: { type: String, required: true, trim: true },
-    username: { type: String, required: true, unique: true, trim: true, lowercase: true },
-    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    username: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      lowercase: true,
+    },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+    },
     phone: { type: String, default: "" },
     company: { type: String, default: "" },
-    areaOfInterest: { type: String, default: "" },
-    invoicingEmail: { type: String, unique: true, sparse: true, lowercase: true, trim: true },
+    areaOfInterest: { type: [String], default: [] },
+    invoicingEmail: {
+      type: String,
+      unique: true,
+      sparse: true,
+      lowercase: true,
+      trim: true,
+    },
     country: { type: String, default: "" },
 
     // Address Object
@@ -23,7 +41,11 @@ const userSchema = new mongoose.Schema(
 
     // Authentication
     password: { type: String, required: true, minlength: 6, select: false },
-    role: { type: String, enum: ["customer", "admin", "employee"], default: "customer" },
+    role: {
+      type: String,
+      enum: ["customer", "admin", "employee"],
+      default: "customer",
+    },
 
     // Employee specific
     employeeRole: {
