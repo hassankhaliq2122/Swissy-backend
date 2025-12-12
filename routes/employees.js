@@ -2,8 +2,6 @@ const express = require("express");
 const User = require("../models/User");
 const Order = require("../models/Order");
 const { protect, authorize } = require("../middleware/auth");
-const { sendEmail } = require("../utils/emailService");
-const crypto = require("crypto");
 
 const router = express.Router();
 
@@ -12,10 +10,15 @@ const router = express.Router();
 --------------------------------------------- */
 router.post("/", protect, authorize("admin"), async (req, res) => {
   try {
-    const { name, email, employeeRole } = req.body;
+    const { name, email, password, employeeRole } = req.body;
 
-    if (!name || !email) {
-      return res.status(400).json({ success: false, message: "Name and Email are required" });
+    if (!name || !email || !password) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Name, Email, and Password are required",
+        });
     }
 
     const validRoles = ["patches", "vector", "digitizing"];
@@ -28,18 +31,20 @@ router.post("/", protect, authorize("admin"), async (req, res) => {
 
     const userExists = await User.findOne({ email });
     if (userExists) {
-      return res.status(400).json({ success: false, message: "User with this email already exists" });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "User with this email already exists",
+        });
     }
 
-    // Generate temporary password
-    const tempPassword = crypto.randomBytes(8).toString("hex");
-
-    // Create employee
+    // Create employee with admin-provided password
     const employee = await User.create({
       name,
       email,
       username: email, // Use email as username for employees
-      password: tempPassword,
+      password,
       role: "employee",
       employeeRole,
       isActive: true,
@@ -52,32 +57,6 @@ router.post("/", protect, authorize("admin"), async (req, res) => {
       date: new Date(),
     });
     await employee.save();
-
-    // Send email with credentials
-    try {
-      const html = `
-        <div style="font-family: Arial; padding: 20px; max-width: 600px; margin: auto;">
-          <h2 style="background: #000; color: #FFD700; padding: 15px; text-align: center;">
-            Your Employee Account is Ready
-          </h2>
-          <div style="padding: 20px; background: #f5f5f5; border-radius: 8px;">
-            <p>Hello <strong>${name}</strong>,</p>
-            <p>Your employee account has been created.</p>
-            <p><strong>Email:</strong> ${email}</p>
-            <p><strong>Temporary Password:</strong> ${tempPassword}</p>
-            <p><strong>Department:</strong> ${employeeRole}</p>
-            <p style="margin-top: 15px; color: red;">Please change your password after login.</p>
-            <a href="${process.env.FRONTEND_URL}/admin/login"
-              style="display:inline-block; background:#FFD700; color:#000; padding:10px 20px; border-radius:5px; margin-top:20px; text-decoration:none;">
-              Login Here
-            </a>
-          </div>
-        </div>
-      `;
-      await sendEmail({ email, subject: "Your Employee Account Login Details", html });
-    } catch (err) {
-      console.error("❌ Email sending failed:", err);
-    }
 
     res.status(201).json({
       success: true,
@@ -92,7 +71,13 @@ router.post("/", protect, authorize("admin"), async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error creating employee:", error);
-    res.status(500).json({ success: false, message: "Failed to create employee", error: error.message });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to create employee",
+        error: error.message,
+      });
   }
 });
 
@@ -108,7 +93,13 @@ router.get("/", protect, authorize("admin"), async (req, res) => {
     res.json({ success: true, count: employees.length, employees });
   } catch (error) {
     console.error("❌ Failed to fetch employees:", error);
-    res.status(500).json({ success: false, message: "Failed to fetch employees", error: error.message });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to fetch employees",
+        error: error.message,
+      });
   }
 });
 
@@ -118,11 +109,16 @@ router.get("/", protect, authorize("admin"), async (req, res) => {
 router.put("/:id", protect, authorize("admin"), async (req, res) => {
   try {
     const { id } = req.params;
-    if (!id) return res.status(400).json({ success: false, message: "Employee ID is required" });
+    if (!id)
+      return res
+        .status(400)
+        .json({ success: false, message: "Employee ID is required" });
 
     const employee = await User.findById(id);
     if (!employee || employee.role !== "employee") {
-      return res.status(404).json({ success: false, message: "Employee not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Employee not found" });
     }
 
     const { name, email, employeeRole, isActive } = req.body;
@@ -131,7 +127,10 @@ router.put("/:id", protect, authorize("admin"), async (req, res) => {
 
     if (email && email !== employee.email) {
       const exists = await User.findOne({ email });
-      if (exists) return res.status(400).json({ success: false, message: "Email already in use" });
+      if (exists)
+        return res
+          .status(400)
+          .json({ success: false, message: "Email already in use" });
       employee.email = email;
     }
 
@@ -164,7 +163,13 @@ router.put("/:id", protect, authorize("admin"), async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Employee update failed:", error);
-    res.status(500).json({ success: false, message: "Failed to update employee", error: error.message });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to update employee",
+        error: error.message,
+      });
   }
 });
 
@@ -175,18 +180,29 @@ router.delete("/:id", protect, authorize("admin"), async (req, res) => {
   try {
     const employee = await User.findById(req.params.id);
     if (!employee || employee.role !== "employee") {
-      return res.status(404).json({ success: false, message: "Employee not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Employee not found" });
     }
 
     // Remove employee reference from assigned orders
-    await Order.updateMany({ assignedTo: employee._id }, { $unset: { assignedTo: "" } });
+    await Order.updateMany(
+      { assignedTo: employee._id },
+      { $unset: { assignedTo: "" } }
+    );
 
     await employee.deleteOne();
 
     res.json({ success: true, message: "Employee deleted successfully" });
   } catch (error) {
     console.error("❌ Failed to delete employee:", error);
-    res.status(500).json({ success: false, message: "Failed to delete employee", error: error.message });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to delete employee",
+        error: error.message,
+      });
   }
 });
 
