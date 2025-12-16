@@ -1098,4 +1098,239 @@ router.post('/:id/create-revision', protect, async (req, res) => {
   }
 });
 
+/* ================================
+   EMPLOYEE SUBMIT WORK (Pending Admin Approval)
+================================ */
+router.post('/:id/employee-submit', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'employee') {
+      return res.status(403).json({ success: false, message: 'Only employees can submit work' });
+    }
+
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+
+    // Verify employee is assigned to this order
+    if (!order.assignedTo || order.assignedTo.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'You are not assigned to this order' });
+    }
+
+    const { pendingStatus, pendingFiles, pendingReport, comments } = req.body;
+
+    // Store pending work (NOT sent to customer yet)
+    order.employeePendingWork = {
+      hasPendingWork: true,
+      pendingStatus: pendingStatus || 'Waiting for Approval',
+      pendingFiles: pendingFiles || [],
+      pendingReport: pendingReport || comments || '',
+      submittedAt: new Date(),
+      submittedBy: req.user._id,
+      rejectionReason: '',
+      wasRejected: false
+    };
+
+    await order.save();
+
+    // Notify admins about pending work
+    const io = req.app.get('io');
+    const admins = await User.find({ role: 'admin' });
+
+    for (const admin of admins) {
+      const notification = await Notification.create({
+        userId: admin._id,
+        orderId: order._id,
+        type: 'employee_work_pending',
+        title: '📋 Employee Work Pending Approval',
+        message: `${req.user.name} submitted work for order ${order.orderNumber}. Please review.`,
+      });
+      io.to(`user-${admin._id}`).emit('newNotification', notification);
+      io.to(`user-${admin._id}`).emit('adminOrderUpdate', order);
+    }
+
+    console.log(`✅ Employee ${req.user.name} submitted work for order ${order.orderNumber}`);
+
+    res.json({
+      success: true,
+      message: 'Work submitted for admin review',
+      order: {
+        _id: order._id,
+        orderNumber: order.orderNumber,
+        employeePendingWork: order.employeePendingWork
+      }
+    });
+  } catch (error) {
+    console.error('❌ Failed to submit employee work:', error);
+    res.status(500).json({ success: false, message: 'Failed to submit work', error: error.message });
+  }
+});
+
+/* ================================
+   ADMIN APPROVE EMPLOYEE WORK
+================================ */
+router.post('/:id/admin-approve-work', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Only admin can approve work' });
+    }
+
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+
+    if (!order.employeePendingWork?.hasPendingWork) {
+      return res.status(400).json({ success: false, message: 'No pending work to approve' });
+    }
+
+    const pending = order.employeePendingWork;
+
+    // Move pending files to sampleImages
+    if (pending.pendingFiles && pending.pendingFiles.length > 0) {
+      pending.pendingFiles.forEach(file => {
+        order.sampleImages.push({
+          url: file.url,
+          filename: file.filename,
+          type: 'initial',
+          comments: file.comments || pending.pendingReport || '',
+          uploadedAt: file.uploadedAt || new Date()
+        });
+      });
+    }
+
+    // Update order status from pending status
+    if (pending.pendingStatus) {
+      order.status = pending.pendingStatus;
+    }
+
+    // Update report if provided
+    if (pending.pendingReport) {
+      order.report = pending.pendingReport;
+    }
+
+    // Clear pending work
+    order.employeePendingWork = {
+      hasPendingWork: false,
+      pendingStatus: '',
+      pendingFiles: [],
+      pendingReport: '',
+      submittedAt: null,
+      submittedBy: null,
+      rejectionReason: '',
+      wasRejected: false
+    };
+
+    await order.save();
+
+    const io = req.app.get('io');
+
+    // NOW notify customer (only after admin approval)
+    const notification = await Notification.create({
+      userId: order.customerId,
+      orderId: order._id,
+      type: 'sample_uploaded',
+      title: 'Sample Uploaded',
+      message: `A sample has been uploaded for order ${order.orderNumber}. Approve or Request Revision.`,
+    });
+
+    io.to(`user-${order.customerId}`).emit('newNotification', notification);
+    io.to(`user-${order.customerId}`).emit('orderUpdate', order);
+
+    // Notify employee that work was approved
+    if (pending.submittedBy) {
+      const empNotification = await Notification.create({
+        userId: pending.submittedBy,
+        orderId: order._id,
+        type: 'work_approved',
+        title: '✅ Work Approved',
+        message: `Your work for order ${order.orderNumber} has been approved by admin.`,
+      });
+      io.to(`user-${pending.submittedBy}`).emit('newNotification', empNotification);
+    }
+
+    console.log(`✅ Admin approved work for order ${order.orderNumber}`);
+
+    res.json({ success: true, message: 'Work approved and sent to customer', order });
+  } catch (error) {
+    console.error('❌ Failed to approve employee work:', error);
+    res.status(500).json({ success: false, message: 'Failed to approve work', error: error.message });
+  }
+});
+
+/* ================================
+   ADMIN REJECT EMPLOYEE WORK
+================================ */
+router.post('/:id/admin-reject-work', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Only admin can reject work' });
+    }
+
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+
+    if (!order.employeePendingWork?.hasPendingWork) {
+      return res.status(400).json({ success: false, message: 'No pending work to reject' });
+    }
+
+    const { rejectionReason } = req.body;
+    const submittedBy = order.employeePendingWork.submittedBy;
+
+    // Mark as rejected but keep files so employee can see what was rejected
+    order.employeePendingWork = {
+      hasPendingWork: false,
+      pendingStatus: order.employeePendingWork.pendingStatus,
+      pendingFiles: order.employeePendingWork.pendingFiles,
+      pendingReport: order.employeePendingWork.pendingReport,
+      submittedAt: order.employeePendingWork.submittedAt,
+      submittedBy: submittedBy,
+      rejectionReason: rejectionReason || 'Work needs revision',
+      wasRejected: true
+    };
+
+    await order.save();
+
+    const io = req.app.get('io');
+
+    // Notify employee about rejection
+    if (submittedBy) {
+      const notification = await Notification.create({
+        userId: submittedBy,
+        orderId: order._id,
+        type: 'work_rejected',
+        title: '❌ Work Rejected',
+        message: `Your work for order ${order.orderNumber} was rejected. Reason: ${rejectionReason || 'Work needs revision'}`,
+      });
+      io.to(`user-${submittedBy}`).emit('newNotification', notification);
+      io.to(`user-${submittedBy}`).emit('orderUpdate', order);
+    }
+
+    console.log(`❌ Admin rejected work for order ${order.orderNumber}`);
+
+    res.json({ success: true, message: 'Work rejected. Employee has been notified.', order });
+  } catch (error) {
+    console.error('❌ Failed to reject employee work:', error);
+    res.status(500).json({ success: false, message: 'Failed to reject work', error: error.message });
+  }
+});
+
+/* ================================
+   GET ORDERS WITH PENDING WORK (Admin)
+================================ */
+router.get('/pending-employee-work', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Only admin can view pending work' });
+    }
+
+    const orders = await Order.find({ 'employeePendingWork.hasPendingWork': true })
+      .sort({ 'employeePendingWork.submittedAt': -1 })
+      .populate('customerId', 'name email')
+      .populate('assignedTo', 'name email employeeRole')
+      .populate('employeePendingWork.submittedBy', 'name email');
+
+    res.json({ success: true, count: orders.length, orders });
+  } catch (error) {
+    console.error('❌ Failed to fetch pending work:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch pending work', error: error.message });
+  }
+});
+
 module.exports = router;
