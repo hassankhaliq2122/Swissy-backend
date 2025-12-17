@@ -54,10 +54,6 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
-    // Google Auth
-    googleAvatar: { type: String },
-    authProvider: { type: String, default: "local" },
-
     // Account Status
     isActive: { type: Boolean, default: true },
     isVerified: { type: Boolean, default: false },
@@ -76,11 +72,6 @@ const userSchema = new mongoose.Schema(
     customerNumber: { type: String, unique: true, sparse: true },
 
     // Billing Info (Legacy/Optional)
-    billingAddress: { type: String, default: "" },
-    billingCity: { type: String, default: "" },
-    billingState: { type: String, default: "" },
-    billingZip: { type: String, default: "" },
-    billingCountry: { type: String, default: "" },
   },
   { timestamps: true }
 );

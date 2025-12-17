@@ -44,7 +44,7 @@ const notificationSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    // 📌 For Admin → Employee / Customer targeting info
+    // For Admin → Employee / Customer targeting info
     senderRole: {
       type: String,
       enum: ["admin", "customer", "employee"],
@@ -54,13 +54,13 @@ const notificationSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    // 🔄 If order reassigned → who was old employee?
+    //  If order reassigned → who was old employee?
     previousAssignedEmployee: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       default: null,
     },
-    // 🔄 If assigned → which employee?
+    //  If assigned → which employee?
     assignedEmployee: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

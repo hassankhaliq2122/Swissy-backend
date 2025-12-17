@@ -314,9 +314,9 @@ const orderSchema = new mongoose.Schema(
       wasRejected: { type: Boolean, default: false },
     },
 
-    /* ==========================================
-     🔥 INVOICE SETTINGS (ADDED)
-  ========================================== */
+    /* 
+      INVOICE SETTINGS (ADDED)
+       */
     invoiceId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Invoice",

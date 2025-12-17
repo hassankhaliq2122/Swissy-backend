@@ -1,18 +1,18 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const invoiceSchema = new mongoose.Schema(
   {
     // 🔹 Link to Customer
     customerId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      ref: "User",
       required: true,
     },
 
     // 🔹 Link to Order
     orderId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Order',
+      ref: "Order",
       required: true,
     },
 
@@ -39,14 +39,14 @@ const invoiceSchema = new mongoose.Schema(
 
     // 🔹 Amount Breakdown
     subtotal: { type: Number, required: true, min: 0, default: 0 },
-    tax: { type: Number, required: true, min: 0, default: 0 },
+
     total: { type: Number, required: true, min: 0, default: 0 },
 
     // 🔹 Payment Status
     paymentStatus: {
       type: String,
-      enum: ['unpaid', 'paid', 'refunded', 'cancelled'],
-      default: 'unpaid',
+      enum: ["unpaid", "paid", "refunded", "cancelled"],
+      default: "unpaid",
     },
 
     // 🔹 PayPal Transaction Details
@@ -54,7 +54,7 @@ const invoiceSchema = new mongoose.Schema(
       transactionId: { type: String, default: null },
       payerId: { type: String, default: null },
       payerEmail: { type: String, default: null },
-      paymentMethod: { type: String, default: 'PayPal' },
+      paymentMethod: { type: String, default: "PayPal" },
       paidAt: { type: Date, default: null },
     },
 
@@ -64,7 +64,7 @@ const invoiceSchema = new mongoose.Schema(
     customerViewed: { type: Boolean, default: false },
 
     // 🔹 Optional Notes (Admin / Customer)
-    notes: { type: String, default: '' },
+    notes: { type: String, default: "" },
 
     // 🔹 Due Date (Optional)
     dueDate: { type: Date, default: null },
@@ -76,4 +76,5 @@ const invoiceSchema = new mongoose.Schema(
 );
 
 // ✅ Export model
-module.exports = mongoose.models.Invoice || mongoose.model('Invoice', invoiceSchema);
+module.exports =
+  mongoose.models.Invoice || mongoose.model("Invoice", invoiceSchema);
