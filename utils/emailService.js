@@ -1,36 +1,121 @@
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 const PDFDocument = require("pdfkit");
 const streamBuffers = require("stream-buffers");
 
 /* ===============================
-   SETUP EMAIL TRANSPORTER
+   SETUP RESEND CLIENT
 =============================== */
+let resend = null;
+
+if (process.env.RESEND_API_KEY) {
+  resend = new Resend(process.env.RESEND_API_KEY);
+} else {
+  console.warn("⚠️ Resend API Key not configured. Emails will not be sent.");
+}
 
 /* ===============================
    GENERAL EMAIL FUNCTION
 =============================== */
-const Resend = require("resend").Resend;
+exports.sendEmail = async ({ email, subject, html, attachments }) => {
+  if (!resend) {
+    console.warn("⚠️ Email service not configured. Skipping sendEmail.");
+    return null;
+  }
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-const sendEmail = async ({ email, subject, html }) => {
   try {
-    const res = await resend.emails.send({
-      from: "SwissEmbro <no-reply@swissembropatches.org>",
-      to: [email],
+    const fromEmail = process.env.EMAIL_FROM || "onboarding@resend.dev";
+
+    const emailOptions = {
+      from: `SwissEmbro <${fromEmail}>`,
+      to: email,
       subject,
       html,
-    });
+    };
 
-    console.log(`✅ Email sent to ${email}`, res);
-    return true;
+    if (attachments && attachments.length > 0) {
+      emailOptions.attachments = attachments.map((att) => ({
+        filename: att.filename,
+        content: att.content, // Resend expects Buffer or string content
+      }));
+    }
+
+    const data = await resend.emails.send(emailOptions);
+
+    if (data.error) {
+      console.error(`❌ Failed to send email to ${email}:`, data.error);
+      return null;
+    }
+
+    console.log(`✅ Email sent to ${email}: ${data.id}`);
+    return data;
   } catch (error) {
     console.error(`❌ Failed to send email to ${email}:`, error);
     return null;
   }
 };
 
-exports.sendEmail = sendEmail;
+/* ===============================
+   ORDER NOTIFICATIONS
+=============================== */
+exports.sendOrderNotification = async (
+  adminEmail,
+  orderNumber,
+  customerName
+) => {
+  const html = `
+    <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #FFDD00; background: #000; padding: 15px; text-align: center;">
+        New Order Received
+      </h2>
+      <div style="padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px;">
+        <p><strong>Order Number:</strong> ${orderNumber}</p>
+        <p><strong>Customer:</strong> ${customerName}</p>
+        <p>A new order has been placed and is awaiting your review.</p>
+        <p style="margin-top: 20px;">
+          <a href="${
+            process.env.CUSTOMER_URL || "https://swissembropatches.org"
+          }/orders" 
+             style="background: #FFDD00; color: #000; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+            View Orders
+          </a>
+        </p>
+      </div>
+    </div>
+  `;
+
+  return await exports.sendEmail({
+    email: adminEmail,
+    subject: `New Order: ${orderNumber}`,
+    html,
+  });
+};
+
+exports.sendOrderStatusUpdate = async (customerEmail, orderNumber, status) => {
+  const html = `
+    <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #FFDD00; background: #000; padding: 15px; text-align: center;">
+        Order Status Update
+      </h2>
+      <div style="padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px;">
+        <p><strong>Order Number:</strong> ${orderNumber}</p>
+        <p><strong>New Status:</strong> ${status}</p>
+        <p>Your order status has been updated.</p>
+        <p style="margin-top: 20px;">
+          <a href="https://swissembropatches.org/dashboard" 
+             style="background: #FFDD00; color: #000; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+            View Order
+          </a>
+        </p>
+      </div>
+    </div>
+  `;
+
+  return await exports.sendEmail({
+    email: customerEmail,
+    subject: `Order ${orderNumber} Status Update`,
+    html,
+  });
+};
 
 /* ===============================
    GENERATE PDF INVOICE
@@ -94,7 +179,7 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
   }
 
   const paymentLink = `${
-    process.env.FRONTEND_URL || "http://localhost:5173"
+    process.env.FRONTEND_URL || "https://swissembropatches.org"
   }/invoices/pay/${invoice._id}`;
   const pdfBuffer = await generateInvoicePDF(invoice, customer);
 
@@ -118,7 +203,7 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
     </div>
   `;
 
-  return sendEmail({
+  return await exports.sendEmail({
     email: customer.email,
     subject: `Invoice ${invoice.invoiceNumber} - SwissEmbro`,
     html,
@@ -128,6 +213,265 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
         content: pdfBuffer,
       },
     ],
+  });
+};
+
+/* ===============================
+   ORDER ASSIGNMENT EMAIL (Single)
+=============================== */
+exports.sendOrderAssignmentEmail = async (
+  employee,
+  order,
+  assignedBy = "Admin"
+) => {
+  if (!employee.email) {
+    console.warn("⚠️ Employee has no email. Skipping assignment email.");
+    return null;
+  }
+
+  const orderLink = `${
+    process.env.FRONTEND_URL || "http://localhost:3000"
+  }/employee/orders`;
+
+  // Get design name based on order type
+  const designName =
+    order.orderType === "patches"
+      ? order.patchDesignName || "N/A"
+      : order.designName || "N/A";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
+      <!-- Header -->
+      <div style="background: #000; padding: 30px; text-align: center;">
+        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">SwissEmbro</h1>
+        <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">Order Management System</p>
+      </div>
+
+      <!-- Main Content -->
+      <div style="padding: 40px 30px; background: #f9f9f9;">
+        <h2 style="color: #333; margin-top: 0; font-size: 24px;">🎯 New Order Assigned to You</h2>
+        
+        <p style="color: #555; font-size: 16px; line-height: 1.6;">
+          Hello <strong>${employee.name}</strong>,
+        </p>
+        
+        <p style="color: #555; font-size: 16px; line-height: 1.6;">
+          You have been assigned a new order by <strong>${assignedBy}</strong>. Please review the details below:
+        </p>
+
+        <!-- Order Details Card -->
+        <div style="background: #fff; border-left: 4px solid #FFDD00; padding: 20px; margin: 25px 0; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+          <h3 style="color: #000; margin-top: 0; font-size: 18px;">📋 Order Details</h3>
+          
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600; width: 40%;">Order Number:</td>
+              <td style="padding: 8px 0; color: #333; font-weight: bold;">${
+                order.orderNumber
+              }</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Order Type:</td>
+              <td style="padding: 8px 0; color: #333;">
+                <span style="background: #FFDD00; color: #000; padding: 4px 12px; border-radius: 12px; font-weight: 600; font-size: 14px;">
+                  ${order.orderType.toUpperCase()}
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Design Name:</td>
+              <td style="padding: 8px 0; color: #333;">${designName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Customer:</td>
+              <td style="padding: 8px 0; color: #333;">${
+                order.customerId?.name || "N/A"
+              }</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Current Status:</td>
+              <td style="padding: 8px 0; color: #333;">
+                <span style="background: #e3f2fd; color: #1976d2; padding: 4px 12px; border-radius: 12px; font-weight: 600; font-size: 14px;">
+                  ${order.status}
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Assigned Date:</td>
+              <td style="padding: 8px 0; color: #333;">${new Date().toLocaleDateString(
+                "en-US",
+                { year: "numeric", month: "long", day: "numeric" }
+              )}</td>
+            </tr>
+          </table>
+        </div>
+
+        ${
+          order.notes
+            ? `
+        <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px;">
+          <p style="margin: 0; color: #856404; font-size: 14px;">
+            <strong>📝 Notes:</strong> ${order.notes}
+          </p>
+        </div>
+        `
+            : ""
+        }
+
+        <!-- Action Button -->
+        <div style="text-align: center; margin: 35px 0 25px 0;">
+          <a href="${orderLink}" 
+             style="background: #FFDD00; color: #000; padding: 14px 35px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold; font-size: 16px; box-shadow: 0 3px 6px rgba(0,0,0,0.16);">
+            View My Orders →
+          </a>
+        </div>
+
+        <p style="color: #666; font-size: 14px; line-height: 1.6; margin-top: 30px;">
+          Please log in to your employee portal to view the complete order details and manage this assignment.
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <div style="background: #000; padding: 20px 30px; text-align: center; color: #999; font-size: 13px;">
+        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbro. All rights reserved.</p>
+        <p style="margin: 5px 0;">This is an automated notification. Please do not reply to this email.</p>
+      </div>
+    </div>
+  `;
+
+  return await exports.sendEmail({
+    email: employee.email,
+    subject: `🎯 New Order Assigned: ${order.orderNumber}`,
+    html,
+  });
+};
+
+/* ===============================
+   BULK ORDER ASSIGNMENT EMAIL
+=============================== */
+exports.sendBulkOrderAssignmentEmail = async (
+  employee,
+  orders,
+  assignedBy = "Admin"
+) => {
+  if (!employee.email) {
+    console.warn("⚠️ Employee has no email. Skipping bulk assignment email.");
+    return null;
+  }
+
+  const orderLink = `${
+    process.env.FRONTEND_URL || "http://localhost:3000"
+  }/employee/orders`;
+  const orderCount = orders.length;
+
+  // Create order rows for the table
+  const orderRows = orders
+    .map((order, index) => {
+      const designName =
+        order.orderType === "patches"
+          ? order.patchDesignName || "N/A"
+          : order.designName || "N/A";
+
+      return `
+      <tr style="${
+        index % 2 === 0 ? "background: #f9f9f9;" : "background: #fff;"
+      }">
+        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; text-align: center;">${
+          index + 1
+        }</td>
+        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; font-weight: 600; color: #333;">${
+          order.orderNumber
+        }</td>
+        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0;">
+          <span style="background: #FFDD00; color: #000; padding: 3px 10px; border-radius: 10px; font-size: 12px; font-weight: 600;">
+            ${order.orderType.toUpperCase()}
+          </span>
+        </td>
+        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; color: #555;">${designName}</td>
+        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; color: #555;">${
+          order.customerId?.name || "N/A"
+        }</td>
+      </tr>
+    `;
+    })
+    .join("");
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 750px; margin: 0 auto; background: #fff;">
+      <!-- Header -->
+      <div style="background: #000; padding: 30px; text-align: center;">
+        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">SwissEmbro</h1>
+        <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">Order Management System</p>
+      </div>
+
+      <!-- Main Content -->
+      <div style="padding: 40px 30px; background: #f9f9f9;">
+        <h2 style="color: #333; margin-top: 0; font-size: 24px;">🎯 Multiple Orders Assigned to You</h2>
+        
+        <p style="color: #555; font-size: 16px; line-height: 1.6;">
+          Hello <strong>${employee.name}</strong>,
+        </p>
+        
+        <p style="color: #555; font-size: 16px; line-height: 1.6;">
+          You have been assigned <strong style="color: #FFDD00; background: #000; padding: 3px 10px; border-radius: 4px;">${orderCount}</strong> new orders by <strong>${assignedBy}</strong>.
+        </p>
+
+        <!-- Summary Card -->
+        <div style="background: linear-gradient(135deg, #FFDD00 0%, #FFC700 100%); padding: 25px; margin: 25px 0; border-radius: 8px; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.15);">
+          <h3 style="color: #000; margin: 0 0 10px 0; font-size: 20px;">📦 Assignment Summary</h3>
+          <p style="color: #000; margin: 0; font-size: 36px; font-weight: bold;">${orderCount}</p>
+          <p style="color: #000; margin: 5px 0 0 0; font-size: 16px;">New Orders</p>
+          <p style="color: #333; margin: 15px 0 0 0; font-size: 14px;">Assigned on ${new Date().toLocaleDateString(
+            "en-US",
+            { year: "numeric", month: "long", day: "numeric" }
+          )}</p>
+        </div>
+
+        <!-- Orders Table -->
+        <div style="background: #fff; padding: 20px; margin: 25px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow-x: auto;">
+          <h3 style="color: #000; margin-top: 0; font-size: 18px; border-bottom: 3px solid #FFDD00; padding-bottom: 10px;">📋 Order Details</h3>
+          
+          <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+            <thead>
+              <tr style="background: #000; color: #FFDD00;">
+                <th style="padding: 12px 8px; text-align: center; font-weight: 600;">#</th>
+                <th style="padding: 12px 8px; text-align: left; font-weight: 600;">Order Number</th>
+                <th style="padding: 12px 8px; text-align: left; font-weight: 600;">Type</th>
+                <th style="padding: 12px 8px; text-align: left; font-weight: 600;">Design Name</th>
+                <th style="padding: 12px 8px; text-align: left; font-weight: 600;">Customer</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${orderRows}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Action Button -->
+        <div style="text-align: center; margin: 35px 0 25px 0;">
+          <a href="${orderLink}" 
+             style="background: #FFDD00; color: #000; padding: 14px 35px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold; font-size: 16px; box-shadow: 0 3px 6px rgba(0,0,0,0.16);">
+            View All My Orders →
+          </a>
+        </div>
+
+        <p style="color: #666; font-size: 14px; line-height: 1.6; margin-top: 30px; text-align: center;">
+          Please log in to your employee portal to view complete details and manage these assignments.
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <div style="background: #000; padding: 20px 30px; text-align: center; color: #999; font-size: 13px;">
+        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbro. All rights reserved.</p>
+        <p style="margin: 5px 0;">This is an automated notification. Please do not reply to this email.</p>
+      </div>
+    </div>
+  `;
+
+  return await exports.sendEmail({
+    email: employee.email,
+    subject: `🎯 ${orderCount} New Orders Assigned to You`,
+    html,
   });
 };
 
@@ -148,9 +492,7 @@ exports.sendCustomerOrderConfirmation = async (customer, order) => {
       ? order.patchDesignName || "N/A"
       : order.designName || "N/A";
 
-  const orderLink = `${
-    process.env.FRONTEND_URL || "https://swissembropatches.org/dashboard"
-  }/customer/orders`;
+  const orderLink = "https://swissembropatches.org/dashboard";
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
@@ -246,7 +588,7 @@ exports.sendCustomerOrderConfirmation = async (customer, order) => {
     </div>
   `;
 
-  return sendEmail({
+  return await exports.sendEmail({
     email: customer.email,
     subject: `✅ Order Confirmed: ${order.orderNumber}`,
     html,
@@ -269,7 +611,7 @@ exports.sendAdminNewOrderEmail = async (adminEmail, order, customer) => {
       : order.designName || "N/A";
 
   const orderLink = `${
-    process.env.ADMIN_URL || "http://localhost:5174"
+    process.env.CUSTOMER_URL || "https://swissembropatches.org"
   }/orders`;
 
   const html = `
@@ -367,7 +709,7 @@ exports.sendAdminNewOrderEmail = async (adminEmail, order, customer) => {
     </div>
   `;
 
-  return sendEmail({
+  return await exports.sendEmail({
     email: adminEmail,
     subject: `🆕 New Order: ${order.orderNumber} from ${
       customer?.name || "Customer"
@@ -389,9 +731,7 @@ exports.sendCustomerStatusUpdateEmail = async (
     return null;
   }
 
-  const orderLink = `${
-    process.env.FRONTEND_URL || "https://swissembropatches.org/dashboard"
-  }/customer/orders`;
+  const orderLink = "https://swissembropatches.org/dashboard";
 
   // Status color mapping
   const statusColors = {
@@ -513,9 +853,128 @@ exports.sendCustomerStatusUpdateEmail = async (
     </div>
   `;
 
-  return sendEmail({
+  return await exports.sendEmail({
     email: customer.email,
     subject: `📦 Order ${order.orderNumber} - Status: ${order.status}`,
+    html,
+  });
+};
+
+/* ===============================
+   CUSTOMER TRACKING NUMBER UPDATE
+=============================== */
+exports.sendTrackingNumberEmail = async (customer, order, trackingNumber) => {
+  if (!customer?.email) {
+    console.warn("⚠️ Customer has no email. Skipping tracking number email.");
+    return null;
+  }
+
+  const orderLink = "https://swissembropatches.org/dashboard";
+
+  // Get design name based on order  type
+  const designName =
+    order.orderType === "patches"
+      ? order.patchDesignName || "N/A"
+      : order.designName || "N/A";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
+      <!-- Header -->
+      <div style="background: linear-gradient(135deg, #000 0%, #1a1a1a 100%); padding: 30px; text-align: center;">
+        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">🚚 Your Order is On The Way!</h1>
+        <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">SwissEmbro - Tracking Number Added</p>
+      </div>
+
+      <!-- Main Content -->
+      <div style="padding: 40px 30px; background: #f9f9f9;">
+        <p style="color: #555; font-size: 16px; line-height: 1.6;">
+          Hello <strong>${customer.name}</strong>,
+        </p>
+        
+        <p style="color: #555; font-size: 16px; line-height: 1.6;">
+          Great news! Your order has been shipped and we've added a tracking number to your order. You can now track your shipment in real-time.
+        </p>
+
+        <!-- Tracking Number Card -->
+        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 30px; margin: 25px 0; border-radius: 12px; text-align: center; box-shadow: 0 6px 12px rgba(16, 185, 129, 0.3);">
+          <p style="color: #fff; margin: 0 0 10px 0; font-size: 14px; text-transform: uppercase; letter-spacing: 2px;">Your Tracking Number</p>
+          <div style="background: #fff; padding: 20px; border-radius: 8px; margin: 15px 0;">
+            <p style="color: #000; margin: 0; font-size: 32px; font-weight: bold; font-family: 'Courier New', monospace; letter-spacing: 2px;">
+              ${trackingNumber}
+            </p>
+          </div>
+          <p style="color: #fff; margin: 15px 0 0 0; font-size: 14px; opacity: 0.9;">
+            Use this number to track your shipment with your courier service
+          </p>
+        </div>
+
+        <!-- Order Details Card -->
+        <div style="background: #fff; border-left: 4px solid #FFDD00; padding: 20px; margin: 25px 0; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+          <h3 style="color: #000; margin-top: 0; font-size: 18px;">📋 Order Details</h3>
+          
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600; width: 40%;">Order Number:</td>
+              <td style="padding: 8px 0; color: #333; font-weight: bold;">${
+                order.orderNumber
+              }</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Order Type:</td>
+              <td style="padding: 8px 0; color: #333;">
+                <span style="background: #FFDD00; color: #000; padding: 4px 12px; border-radius: 12px; font-weight: 600; font-size: 14px;">
+                  ${(order.orderType || "N/A").toUpperCase()}
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Design Name:</td>
+              <td style="padding: 8px 0; color: #333;">${designName}</td>
+            </tr>
+            ${
+              order.patchAddress
+                ? `
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-weight: 600;">Delivery Address:</td>
+              <td style="padding: 8px 0; color: #333;">${order.patchAddress}</td>
+            </tr>
+            `
+                : ""
+            }
+          </table>
+        </div>
+
+        <!-- Info Box -->
+        <div style="background: #e0f2fe; border-left: 4px solid #0284c7; padding: 15px; margin: 20px 0; border-radius: 5px;">
+          <p style="margin: 0; color: #075985; font-size: 14px;">
+            <strong>💡 Tip:</strong> You can track your order using this tracking number on your courier's website (DHL, UPS, FedEx, etc.)
+          </p>
+        </div>
+
+        <!-- Action Button -->
+        <div style="text-align: center; margin: 35px 0 25px 0;">
+          <a href="${orderLink}" 
+             style="background: #FFDD00; color: #000; padding: 14px 35px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold; font-size: 16px; box-shadow: 0 3px 6px rgba(0,0,0,0.16);">
+            View Order Details →
+          </a>
+        </div>
+
+        <p style="color: #666; font-size: 14px; line-height: 1.6; margin-top: 30px; text-align: center;">
+          Thank you for choosing SwissEmbro. Your order is on its way to you!
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <div style="background: #000; padding: 20px 30px; text-align: center; color: #999; font-size: 13px;">
+        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbro. All rights reserved.</p>
+        <p style="margin: 5px 0;">Questions? Contact us at support@swissembro.com</p>
+      </div>
+    </div>
+  `;
+
+  return await exports.sendEmail({
+    email: customer.email,
+    subject: `🚚 Tracking Number Added: ${order.orderNumber}`,
     html,
   });
 };
