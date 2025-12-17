@@ -63,7 +63,10 @@ const io = new Server(server, {
   cors: {
     origin: function (origin) {
       if (!origin) return true;
-      return origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:');
+      return (
+        origin.startsWith("http://localhost:") ||
+        origin.startsWith("http://127.0.0.1:")
+      );
     },
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
@@ -107,7 +110,6 @@ try {
   app.use("/api/upload", require("./routes/upload"));
   app.use("/api/activity", require("./routes/activity"));
   app.use("/api/cloudinary", require("./routes/cloudinary"));
-  app.use("/api/uploadthing", require("./routes/uploadthing"));
 } catch (err) {
   console.log("error", err);
   console.error("❌ Error loading routes:", err.message);
