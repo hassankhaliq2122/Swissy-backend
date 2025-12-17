@@ -390,7 +390,7 @@ exports.sendCustomerStatusUpdateEmail = async (
   }
 
   const orderLink = `${
-    process.env.FRONTEND_URL || "http://localhost:3000"
+    process.env.FRONTEND_URL || "https://swissembropatches.org/dashboard"
   }/customer/orders`;
 
   // Status color mapping
