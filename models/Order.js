@@ -48,7 +48,7 @@ const orderSchema = new mongoose.Schema(
       unique: true,
       default: function () {
         const timestamp = Date.now();
-        const random = Math.floor(Math.random() * 100)
+        const random = Math.floor(Math.random() * 10000)
           .toString()
           .padStart(4, "0");
 
