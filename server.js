@@ -13,7 +13,7 @@ dotenv.config();
 // ============================
 if (!process.env.JWT_SECRET) {
   console.warn("⚠️ JWT_SECRET not set, using temporary dev secret.");
-  process.env.JWT_SECRET = "default_jwt_secret_" + Date.now();
+  process.env.JWT_SECRET = "swiss_project_dev_secret_123";
 }
 
 // ============================
@@ -61,13 +61,7 @@ mongoose
 // ============================
 const io = new Server(server, {
   cors: {
-    origin: function (origin) {
-      if (!origin) return true;
-      return (
-        origin.startsWith("http://localhost:") ||
-        origin.startsWith("http://127.0.0.1:")
-      );
-    },
+    origin: (origin, callback) => callback(null, true),
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   },
