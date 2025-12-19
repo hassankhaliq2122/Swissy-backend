@@ -854,35 +854,44 @@ router.post('/:id/sample', protect, upload.single('file'), async (req, res) => {
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
-    let sampleImage;
-
-    // Check if Cloudinary URL is provided (new way)
-    if (req.body.cloudinaryUrl) {
-      console.log('☁️ Processing Cloudinary sample upload');
-      sampleImage = {
+    // Check if multiple files are provided (new preferred way)
+    if (req.body.files && Array.isArray(req.body.files)) {
+      console.log(`☁️ Processing ${req.body.files.length} Cloudinary sample uploads`);
+      req.body.files.forEach(file => {
+        order.sampleImages.push({
+          url: file.url,
+          filename: file.filename || file.name || 'sample.jpg',
+          type: 'initial',
+          comments: req.body.comments || '',
+          uploadedAt: new Date()
+        });
+      });
+    }
+    // Check if single Cloudinary URL is provided (backward compatibility)
+    else if (req.body.cloudinaryUrl) {
+      console.log('☁️ Processing single Cloudinary sample upload');
+      order.sampleImages.push({
         url: req.body.cloudinaryUrl,
         filename: req.body.filename || 'sample.jpg',
         type: 'initial',
         comments: req.body.comments || '',
         uploadedAt: new Date()
-      };
+      });
     }
-    // Check if Multer file is provided (old way - backward compatibility)
+    // Check if Multer file is provided (backward compatibility)
     else if (req.file) {
       console.log('📁 Processing Multer sample upload');
-      sampleImage = {
+      order.sampleImages.push({
         url: `/uploads/orders/${req.file.filename}`,
         filename: req.file.filename,
         type: 'initial',
         comments: req.body.comments || '',
         uploadedAt: new Date()
-      };
+      });
     }
     else {
-      return res.status(400).json({ success: false, message: 'Please upload a sample file or provide Cloudinary URL' });
+      return res.status(400).json({ success: false, message: 'Please upload sample file(s) or provide Cloudinary URL(s)' });
     }
-
-    order.sampleImages.push(sampleImage);
     order.status = 'Waiting for Approval';
     await order.save();
 
@@ -916,35 +925,44 @@ router.post('/:id/revision', protect, upload.single('file'), async (req, res) =>
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
-    let revisionImage;
-
-    // Check if Cloudinary URL is provided (new way)
-    if (req.body.cloudinaryUrl) {
-      console.log('☁️ Processing Cloudinary revision upload');
-      revisionImage = {
+    // Check if multiple files are provided (new preferred way)
+    if (req.body.files && Array.isArray(req.body.files)) {
+      console.log(`☁️ Processing ${req.body.files.length} Cloudinary revision uploads`);
+      req.body.files.forEach(file => {
+        order.sampleImages.push({
+          url: file.url,
+          filename: file.filename || file.name || 'revision.jpg',
+          type: 'revision',
+          comments: req.body.comments || '',
+          uploadedAt: new Date()
+        });
+      });
+    }
+    // Check if single Cloudinary URL is provided (backward compatibility)
+    else if (req.body.cloudinaryUrl) {
+      console.log('☁️ Processing single Cloudinary revision upload');
+      order.sampleImages.push({
         url: req.body.cloudinaryUrl,
         filename: req.body.filename || 'revision.jpg',
         type: 'revision',
         comments: req.body.comments || '',
         uploadedAt: new Date()
-      };
+      });
     }
-    // Check if Multer file is provided (old way - backward compatibility)
+    // Check if Multer file is provided (backward compatibility)
     else if (req.file) {
       console.log('📁 Processing Multer revision upload');
-      revisionImage = {
+      order.sampleImages.push({
         url: `/uploads/orders/${req.file.filename}`,
         filename: req.file.filename,
         type: 'revision',
         comments: req.body.comments || '',
         uploadedAt: new Date()
-      };
+      });
     }
     else {
-      return res.status(400).json({ success: false, message: 'Please upload a revision file or provide Cloudinary URL' });
+      return res.status(400).json({ success: false, message: 'Please upload revision file(s) or provide Cloudinary URL(s)' });
     }
-
-    order.sampleImages.push(revisionImage);
     order.status = 'Revision Ready';
     await order.save();
 
