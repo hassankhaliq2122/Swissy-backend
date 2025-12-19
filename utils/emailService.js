@@ -23,7 +23,8 @@ exports.sendEmail = async ({ email, subject, html, attachments }) => {
   }
 
   try {
-    const fromEmail = process.env.EMAIL_FROM || "onboarding@resend.dev";
+    const fromEmail =
+      process.env.EMAIL_FROM || "no-reply@swissembropatches.org";
 
     const emailOptions = {
       from: `SwissEmbro <${fromEmail}>`,
