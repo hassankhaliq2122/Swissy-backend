@@ -16,6 +16,11 @@ if (!process.env.JWT_SECRET) {
   process.env.JWT_SECRET = "swiss_project_dev_secret_123";
 }
 
+console.log("🔑 JWT Configuration:");
+console.log(`   - Secret: ${process.env.JWT_SECRET ? "Set ✅" : "Missing ❌"}`);
+console.log(`   - Expire: ${process.env.JWT_EXPIRE || "Default (7d)"}`);
+console.log(`   - Time: ${new Date().toISOString()}`);
+
 // ============================
 // 🚀 App & HTTP Server
 // ============================

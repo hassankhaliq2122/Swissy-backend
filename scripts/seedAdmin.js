@@ -16,26 +16,30 @@ const seedAdmin = async () => {
     console.log('MongoDB Connected');
 
     // Check if admin already exists
-    const adminExists = await User.findOne({ email: 'admin@example.com' });
+    // Check if admin already exists
+    const adminEmail = "admin@example.com";
+    const adminPassword = "admin123";
+
+    const adminExists = await User.findOne({ email: adminEmail });
     if (adminExists) {
-      console.log('Admin already exists');
+      console.log(`Admin already exists: ${adminEmail}`);
       process.exit(0);
     }
 
     // Create admin user
-    const hashedPassword = await bcrypt.hash('admin123', 10);
+    // Note: User.create triggers the pre('save') hook which hashes the password
     const admin = await User.create({
       name: 'Admin',
-      email: "hassankhaliq123@gmail.com",
-      password: "hassan123",
+      email: adminEmail,
+      password: adminPassword,
       role: 'admin',
       isActive: true
     });
 
-    console.log('Admin created successfully!');
-    console.log('Email: admin@example.com');
-    console.log('Password: admin123');
-    console.log('Please change the password after first login.');
+    console.log('✅ Admin created successfully!');
+    console.log(`📧 Email: ${adminEmail}`);
+    console.log(`🔑 Password: ${adminPassword}`);
+    console.log('⚠️  Please change the password after first login.');
 
     process.exit(0);
   } catch (error) {
