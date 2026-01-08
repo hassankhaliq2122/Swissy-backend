@@ -72,9 +72,8 @@ exports.sendOrderNotification = async (
         <p><strong>Customer:</strong> ${customerName}</p>
         <p>A new order has been placed and is awaiting your review.</p>
         <p style="margin-top: 20px;">
-          <a href="${
-            process.env.CUSTOMER_URL || "https://swissembropatches.org"
-          }/orders" 
+          <a href="${process.env.CUSTOMER_URL || "https://swissembropatches.org"
+    }/orders" 
              style="background: #FFDD00; color: #000; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
             View Orders
           </a>
@@ -144,19 +143,22 @@ const generateInvoicePDF = async (invoice, customer) => {
   doc.moveDown();
 
   // Table Header
+  const currSymbol = invoice.currencySymbol || "$";
   doc.fontSize(12).text("Items:", { underline: true });
   invoice.items.forEach((item, i) => {
     doc.text(
-      `${i + 1}. ${item.description} - ${item.quantity} × $${item.price.toFixed(
+      `${i + 1}. ${item.description} - ${item.quantity} × ${currSymbol}${item.price.toFixed(
         2
-      )} = $${(item.quantity * item.price).toFixed(2)}`
+      )} = ${currSymbol}${(item.quantity * item.price).toFixed(2)}`
     );
   });
 
   doc.moveDown();
-  doc.text(`Subtotal: $${invoice.subtotal.toFixed(2)}`);
-  doc.text(`Tax: $${invoice.tax.toFixed(2)}`);
-  doc.text(`Total: $${invoice.total.toFixed(2)}`);
+  doc.text(`Subtotal: ${currSymbol}${invoice.subtotal.toFixed(2)}`);
+  doc.text(`Total: ${currSymbol}${invoice.total.toFixed(2)}`);
+  doc.moveDown();
+  doc.text(`Country: ${invoice.country || "USA"}`);
+  doc.text(`Currency: ${invoice.currency || "USD"}`);
   doc.moveDown();
   doc.text(`Notes: ${invoice.notes || "N/A"}`);
   if (invoice.dueDate) doc.text(`Due Date: ${invoice.dueDate.toDateString()}`);
@@ -178,11 +180,11 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
     return null;
   }
 
-  const paymentLink = `${
-    process.env.FRONTEND_URL || "https://swissembropatches.org"
-  }/invoices/pay/${invoice._id}`;
+  const paymentLink = `${process.env.FRONTEND_URL || "https://swissembropatches.org"
+    }/invoices/pay/${invoice._id}`;
   const pdfBuffer = await generateInvoicePDF(invoice, customer);
 
+  const currSymbol = invoice.currencySymbol || "$";
   const html = `
     <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
       <h2 style="color: #FFDD00; background: #000; padding: 15px; text-align: center;">
@@ -191,7 +193,8 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
       <div style="padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px;">
         <p>Hello <strong>${customer.name}</strong>,</p>
         <p>You have a new invoice from SwissEmbro.</p>
-        <p><strong>Total:</strong> $${invoice.total.toFixed(2)}</p>
+        <p><strong>Total:</strong> ${currSymbol}${invoice.total.toFixed(2)}</p>
+        <p><strong>Currency:</strong> ${invoice.currency || "USD"} (${invoice.country || "USA"})</p>
         <p style="margin-top: 20px;">
           <a href="${paymentLink}" 
              style="background: #FFDD00; color: #000; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
@@ -229,9 +232,8 @@ exports.sendOrderAssignmentEmail = async (
     return null;
   }
 
-  const orderLink = `${
-    process.env.FRONTEND_URL || "http://localhost:3000"
-  }/employee/orders`;
+  const orderLink = `${process.env.FRONTEND_URL || "http://localhost:3000"
+    }/employee/orders`;
 
   // Get design name based on order type
   const designName =
@@ -266,9 +268,8 @@ exports.sendOrderAssignmentEmail = async (
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600; width: 40%;">Order Number:</td>
-              <td style="padding: 8px 0; color: #333; font-weight: bold;">${
-                order.orderNumber
-              }</td>
+              <td style="padding: 8px 0; color: #333; font-weight: bold;">${order.orderNumber
+    }</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600;">Order Type:</td>
@@ -284,9 +285,8 @@ exports.sendOrderAssignmentEmail = async (
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600;">Customer:</td>
-              <td style="padding: 8px 0; color: #333;">${
-                order.customerId?.name || "N/A"
-              }</td>
+              <td style="padding: 8px 0; color: #333;">${order.customerId?.name || "N/A"
+    }</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600;">Current Status:</td>
@@ -299,24 +299,23 @@ exports.sendOrderAssignmentEmail = async (
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600;">Assigned Date:</td>
               <td style="padding: 8px 0; color: #333;">${new Date().toLocaleDateString(
-                "en-US",
-                { year: "numeric", month: "long", day: "numeric" }
-              )}</td>
+      "en-US",
+      { year: "numeric", month: "long", day: "numeric" }
+    )}</td>
             </tr>
           </table>
         </div>
 
-        ${
-          order.notes
-            ? `
+        ${order.notes
+      ? `
         <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px;">
           <p style="margin: 0; color: #856404; font-size: 14px;">
             <strong>📝 Notes:</strong> ${order.notes}
           </p>
         </div>
         `
-            : ""
-        }
+      : ""
+    }
 
         <!-- Action Button -->
         <div style="text-align: center; margin: 35px 0 25px 0;">
@@ -359,9 +358,8 @@ exports.sendBulkOrderAssignmentEmail = async (
     return null;
   }
 
-  const orderLink = `${
-    process.env.FRONTEND_URL || "http://localhost:3000"
-  }/employee/orders`;
+  const orderLink = `${process.env.FRONTEND_URL || "http://localhost:3000"
+    }/employee/orders`;
   const orderCount = orders.length;
 
   // Create order rows for the table
@@ -373,14 +371,11 @@ exports.sendBulkOrderAssignmentEmail = async (
           : order.designName || "N/A";
 
       return `
-      <tr style="${
-        index % 2 === 0 ? "background: #f9f9f9;" : "background: #fff;"
-      }">
-        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; text-align: center;">${
-          index + 1
+      <tr style="${index % 2 === 0 ? "background: #f9f9f9;" : "background: #fff;"
+        }">
+        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; text-align: center;">${index + 1
         }</td>
-        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; font-weight: 600; color: #333;">${
-          order.orderNumber
+        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; font-weight: 600; color: #333;">${order.orderNumber
         }</td>
         <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0;">
           <span style="background: #FFDD00; color: #000; padding: 3px 10px; border-radius: 10px; font-size: 12px; font-weight: 600;">
@@ -388,8 +383,7 @@ exports.sendBulkOrderAssignmentEmail = async (
           </span>
         </td>
         <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; color: #555;">${designName}</td>
-        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; color: #555;">${
-          order.customerId?.name || "N/A"
+        <td style="padding: 12px 8px; border-bottom: 1px solid #e0e0e0; color: #555;">${order.customerId?.name || "N/A"
         }</td>
       </tr>
     `;
@@ -422,9 +416,9 @@ exports.sendBulkOrderAssignmentEmail = async (
           <p style="color: #000; margin: 0; font-size: 36px; font-weight: bold;">${orderCount}</p>
           <p style="color: #000; margin: 5px 0 0 0; font-size: 16px;">New Orders</p>
           <p style="color: #333; margin: 15px 0 0 0; font-size: 14px;">Assigned on ${new Date().toLocaleDateString(
-            "en-US",
-            { year: "numeric", month: "long", day: "numeric" }
-          )}</p>
+    "en-US",
+    { year: "numeric", month: "long", day: "numeric" }
+  )}</p>
         </div>
 
         <!-- Orders Table -->
@@ -521,9 +515,8 @@ exports.sendCustomerOrderConfirmation = async (customer, order) => {
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600; width: 40%;">Order Number:</td>
-              <td style="padding: 8px 0; color: #333; font-weight: bold;">${
-                order.orderNumber
-              }</td>
+              <td style="padding: 8px 0; color: #333; font-weight: bold;">${order.orderNumber
+    }</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600;">Order Type:</td>
@@ -548,24 +541,23 @@ exports.sendCustomerOrderConfirmation = async (customer, order) => {
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600;">Order Date:</td>
               <td style="padding: 8px 0; color: #333;">${new Date().toLocaleDateString(
-                "en-US",
-                { year: "numeric", month: "long", day: "numeric" }
-              )}</td>
+      "en-US",
+      { year: "numeric", month: "long", day: "numeric" }
+    )}</td>
             </tr>
           </table>
         </div>
 
-        ${
-          order.notes
-            ? `
+        ${order.notes
+      ? `
         <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px;">
           <p style="margin: 0; color: #856404; font-size: 14px;">
             <strong>📝 Notes:</strong> ${order.notes}
           </p>
         </div>
         `
-            : ""
-        }
+      : ""
+    }
 
         <!-- Action Button -->
         <div style="text-align: center; margin: 35px 0 25px 0;">
@@ -610,9 +602,8 @@ exports.sendAdminNewOrderEmail = async (adminEmail, order, customer) => {
       ? order.patchDesignName || "N/A"
       : order.designName || "N/A";
 
-  const orderLink = `${
-    process.env.CUSTOMER_URL || "https://swissembropatches.org"
-  }/orders`;
+  const orderLink = `${process.env.CUSTOMER_URL || "https://swissembropatches.org"
+    }/orders`;
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
@@ -635,17 +626,15 @@ exports.sendAdminNewOrderEmail = async (adminEmail, order, customer) => {
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="padding: 10px 0; color: #666; font-weight: 600; width: 40%; border-bottom: 1px solid #eee;">Order Number:</td>
-              <td style="padding: 10px 0; color: #333; font-weight: bold; border-bottom: 1px solid #eee;">${
-                order.orderNumber
-              }</td>
+              <td style="padding: 10px 0; color: #333; font-weight: bold; border-bottom: 1px solid #eee;">${order.orderNumber
+    }</td>
             </tr>
             <tr>
               <td style="padding: 10px 0; color: #666; font-weight: 600; border-bottom: 1px solid #eee;">Customer:</td>
               <td style="padding: 10px 0; color: #333; border-bottom: 1px solid #eee;">
                 <strong>${customer?.name || "N/A"}</strong><br>
-                <span style="color: #666; font-size: 13px;">${
-                  customer?.email || ""
-                }</span>
+                <span style="color: #666; font-size: 13px;">${customer?.email || ""
+    }</span>
               </td>
             </tr>
             <tr>
@@ -663,30 +652,29 @@ exports.sendAdminNewOrderEmail = async (adminEmail, order, customer) => {
             <tr>
               <td style="padding: 10px 0; color: #666; font-weight: 600;">Order Date:</td>
               <td style="padding: 10px 0; color: #333;">${new Date().toLocaleDateString(
-                "en-US",
-                {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                }
-              )}</td>
+      "en-US",
+      {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }
+    )}</td>
             </tr>
           </table>
         </div>
 
-        ${
-          order.notes
-            ? `
+        ${order.notes
+      ? `
         <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px;">
           <p style="margin: 0; color: #856404; font-size: 14px;">
             <strong>📝 Customer Notes:</strong> ${order.notes}
           </p>
         </div>
         `
-            : ""
-        }
+      : ""
+    }
 
         <!-- Action Button -->
         <div style="text-align: center; margin: 35px 0 25px 0;">
@@ -711,9 +699,8 @@ exports.sendAdminNewOrderEmail = async (adminEmail, order, customer) => {
 
   return await exports.sendEmail({
     email: adminEmail,
-    subject: `🆕 New Order: ${order.orderNumber} from ${
-      customer?.name || "Customer"
-    }`,
+    subject: `🆕 New Order: ${order.orderNumber} from ${customer?.name || "Customer"
+      }`,
     html,
   });
 };
@@ -784,11 +771,9 @@ exports.sendCustomerStatusUpdateEmail = async (
           </div>
           <p style="color: #666; margin: 10px 0; font-size: 20px;">↓</p>
           <div style="display: inline-block;">
-            <span style="background: ${statusStyle.bg}; color: ${
-    statusStyle.text
-  }; padding: 12px 25px; border-radius: 25px; font-weight: 700; font-size: 18px; border: 2px solid ${
-    statusStyle.text
-  };">
+            <span style="background: ${statusStyle.bg}; color: ${statusStyle.text
+    }; padding: 12px 25px; border-radius: 25px; font-weight: 700; font-size: 18px; border: 2px solid ${statusStyle.text
+    };">
               ${order.status}
             </span>
           </div>
@@ -801,9 +786,8 @@ exports.sendCustomerStatusUpdateEmail = async (
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600; width: 40%;">Order Number:</td>
-              <td style="padding: 8px 0; color: #333; font-weight: bold;">${
-                order.orderNumber
-              }</td>
+              <td style="padding: 8px 0; color: #333; font-weight: bold;">${order.orderNumber
+    }</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600;">Order Type:</td>
@@ -820,17 +804,16 @@ exports.sendCustomerStatusUpdateEmail = async (
           </table>
         </div>
 
-        ${
-          order.rejectedReason
-            ? `
+        ${order.rejectedReason
+      ? `
         <div style="background: #f8d7da; border-left: 4px solid #721c24; padding: 15px; margin: 20px 0; border-radius: 5px;">
           <p style="margin: 0; color: #721c24; font-size: 14px;">
             <strong>❌ Reason:</strong> ${order.rejectedReason}
           </p>
         </div>
         `
-            : ""
-        }
+      : ""
+    }
 
         <!-- Action Button -->
         <div style="text-align: center; margin: 35px 0 25px 0;">
@@ -915,9 +898,8 @@ exports.sendTrackingNumberEmail = async (customer, order, trackingNumber) => {
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600; width: 40%;">Order Number:</td>
-              <td style="padding: 8px 0; color: #333; font-weight: bold;">${
-                order.orderNumber
-              }</td>
+              <td style="padding: 8px 0; color: #333; font-weight: bold;">${order.orderNumber
+    }</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600;">Order Type:</td>
@@ -931,16 +913,15 @@ exports.sendTrackingNumberEmail = async (customer, order, trackingNumber) => {
               <td style="padding: 8px 0; color: #666; font-weight: 600;">Design Name:</td>
               <td style="padding: 8px 0; color: #333;">${designName}</td>
             </tr>
-            ${
-              order.patchAddress
-                ? `
+            ${order.patchAddress
+      ? `
             <tr>
               <td style="padding: 8px 0; color: #666; font-weight: 600;">Delivery Address:</td>
               <td style="padding: 8px 0; color: #333;">${order.patchAddress}</td>
             </tr>
             `
-                : ""
-            }
+      : ""
+    }
           </table>
         </div>
 

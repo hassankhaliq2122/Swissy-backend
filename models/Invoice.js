@@ -42,6 +42,11 @@ const invoiceSchema = new mongoose.Schema(
 
     total: { type: Number, required: true, min: 0, default: 0 },
 
+    // 🔹 Country and Currency
+    country: { type: String, default: "USA" },
+    currency: { type: String, default: "USD" },
+    currencySymbol: { type: String, default: "$" },
+
     // 🔹 Payment Status
     paymentStatus: {
       type: String,
