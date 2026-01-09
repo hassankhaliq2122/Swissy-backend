@@ -810,6 +810,62 @@ router.put('/:id', protect, async (req, res) => {
 });
 
 /* ================================
+   SEND EMAIL TO CUSTOMER (Admin)
+=============================== */
+const { sendCustomOrderEmail } = require('../utils/emailService');
+
+router.post('/:id/email', protect, upload.array('files', 10), async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Only admin can send emails' });
+    }
+
+    const order = await Order.findById(req.params.id).populate('customerId', 'email name');
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    if (!order.customerId?.email) {
+      return res.status(400).json({ success: false, message: 'Customer has no email address' });
+    }
+
+    // Process attachments
+    const attachments = (req.files || []).map(file => ({
+      filename: file.originalname,
+      content: fs.readFileSync(file.path),
+      contentType: file.mimetype
+    }));
+
+    await sendCustomOrderEmail(
+      order.customerId.email,
+      order.orderNumber,
+      req.body.message,
+      attachments
+    );
+
+    // Cleanup temp files
+    if (req.files) {
+      req.files.forEach(f => {
+        try { fs.unlinkSync(f.path); } catch (e) { console.error('Failed to cleanup file:', f.path); }
+      });
+    }
+
+    res.json({ success: true, message: 'Email sent successfully' });
+
+  } catch (error) {
+    console.error('❌ Failed to send email:', error);
+    // Cleanup on error
+    if (req.files) {
+      req.files.forEach(f => {
+        try { fs.unlinkSync(f.path); } catch (e) { /* ignore */ }
+      });
+    }
+    res.status(500).json({ success: false, message: 'Failed to send email', error: error.message });
+  }
+});
+
+
+/* ================================
    DELETE ORDER
 ================================ */
 router.delete('/:id', protect, async (req, res) => {

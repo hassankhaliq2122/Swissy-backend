@@ -143,22 +143,19 @@ const generateInvoicePDF = async (invoice, customer) => {
   doc.moveDown();
 
   // Table Header
-  const currSymbol = invoice.currencySymbol || "$";
   doc.fontSize(12).text("Items:", { underline: true });
   invoice.items.forEach((item, i) => {
     doc.text(
-      `${i + 1}. ${item.description} - ${item.quantity} × ${currSymbol}${item.price.toFixed(
+      `${i + 1}. ${item.description} - ${item.quantity} × $${item.price.toFixed(
         2
-      )} = ${currSymbol}${(item.quantity * item.price).toFixed(2)}`
+      )} = $${(item.quantity * item.price).toFixed(2)}`
     );
   });
 
   doc.moveDown();
-  doc.text(`Subtotal: ${currSymbol}${invoice.subtotal.toFixed(2)}`);
-  doc.text(`Total: ${currSymbol}${invoice.total.toFixed(2)}`);
-  doc.moveDown();
-  doc.text(`Country: ${invoice.country || "USA"}`);
-  doc.text(`Currency: ${invoice.currency || "USD"}`);
+  doc.text(`Subtotal: $${invoice.subtotal.toFixed(2)}`);
+  doc.text(`Tax: $${invoice.tax.toFixed(2)}`);
+  doc.text(`Total: $${invoice.total.toFixed(2)}`);
   doc.moveDown();
   doc.text(`Notes: ${invoice.notes || "N/A"}`);
   if (invoice.dueDate) doc.text(`Due Date: ${invoice.dueDate.toDateString()}`);
@@ -184,7 +181,6 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
     }/invoices/pay/${invoice._id}`;
   const pdfBuffer = await generateInvoicePDF(invoice, customer);
 
-  const currSymbol = invoice.currencySymbol || "$";
   const html = `
     <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
       <h2 style="color: #FFDD00; background: #000; padding: 15px; text-align: center;">
@@ -193,8 +189,7 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
       <div style="padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px;">
         <p>Hello <strong>${customer.name}</strong>,</p>
         <p>You have a new invoice from SwissEmbro.</p>
-        <p><strong>Total:</strong> ${currSymbol}${invoice.total.toFixed(2)}</p>
-        <p><strong>Currency:</strong> ${invoice.currency || "USD"} (${invoice.country || "USA"})</p>
+        <p><strong>Total:</strong> $${invoice.total.toFixed(2)}</p>
         <p style="margin-top: 20px;">
           <a href="${paymentLink}" 
              style="background: #FFDD00; color: #000; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
@@ -468,6 +463,50 @@ exports.sendBulkOrderAssignmentEmail = async (
     html,
   });
 };
+
+/* ===============================
+   CUSTOM ORDER EMAIL (Admin to Customer)
+=============================== */
+exports.sendCustomOrderEmail = async (customerEmail, orderNumber, message, attachments = []) => {
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
+      <div style="background: #000; padding: 20px; text-align: center;">
+        <h1 style="color: #FFDD00; margin: 0; font-size: 24px;">SwissEmbro</h1>
+      </div>
+      
+      <div style="padding: 30px 20px; background: #f9f9f9;">
+        <h2 style="color: #333; margin-top: 0; font-size: 20px;">Message regarding Order #${orderNumber}</h2>
+        
+        <p style="color: #555; font-size: 16px; line-height: 1.6;">
+          ${message ? message.replace(/\n/g, '<br>') : 'Please find the attached files regarding your order.'}
+        </p>
+        
+        <div style="margin-top: 30px; padding: 15px; background: #fff; border-radius: 5px; border-left: 4px solid #FFDD00;">
+          <p style="margin: 0; color: #666; font-size: 14px;"><strong>Note:</strong> ${attachments.length} file(s) attached.</p>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px;">
+           <a href="${process.env.FRONTEND_URL || 'https://swissembropatches.org'}/dashboard" 
+             style="background: #000; color: #FFDD00; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+            View Order
+          </a>
+        </div>
+      </div>
+      
+      <div style="background: #eee; padding: 15px; text-align: center; color: #888; font-size: 12px;">
+        &copy; ${new Date().getFullYear()} SwissEmbro. All rights reserved.
+      </div>
+    </div>
+  `;
+
+  return await exports.sendEmail({
+    email: customerEmail,
+    subject: `Update for Order #${orderNumber}`,
+    html,
+    attachments
+  });
+};
+
 
 /* ===============================
    CUSTOMER ORDER CONFIRMATION
