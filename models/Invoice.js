@@ -28,6 +28,12 @@ const invoiceSchema = new mongoose.Schema(
       },
     },
 
+    // 🔹 Currency (New)
+    currency: {
+      type: String,
+      default: "USD",
+    },
+
     // 🔹 Items (copied from order)
     items: [
       {
@@ -39,13 +45,8 @@ const invoiceSchema = new mongoose.Schema(
 
     // 🔹 Amount Breakdown
     subtotal: { type: Number, required: true, min: 0, default: 0 },
-
+    // Tax removed
     total: { type: Number, required: true, min: 0, default: 0 },
-
-    // 🔹 Country and Currency
-    country: { type: String, default: "USA" },
-    currency: { type: String, default: "USD" },
-    currencySymbol: { type: String, default: "$" },
 
     // 🔹 Payment Status
     paymentStatus: {

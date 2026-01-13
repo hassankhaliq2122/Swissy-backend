@@ -143,19 +143,22 @@ const generateInvoicePDF = async (invoice, customer) => {
   doc.moveDown();
 
   // Table Header
+  // Helper for currency
+  const formatMoney = (amount, currency = 'USD') => {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount || 0);
+  };
+
+  // Table Header
   doc.fontSize(12).text("Items:", { underline: true });
   invoice.items.forEach((item, i) => {
     doc.text(
-      `${i + 1}. ${item.description} - ${item.quantity} × $${item.price.toFixed(
-        2
-      )} = $${(item.quantity * item.price).toFixed(2)}`
+      `${i + 1}. ${item.description} - ${item.quantity} × ${formatMoney(item.price, invoice.currency)} = ${formatMoney(item.quantity * item.price, invoice.currency)}`
     );
   });
 
   doc.moveDown();
-  doc.text(`Subtotal: $${invoice.subtotal.toFixed(2)}`);
-  doc.text(`Tax: $${invoice.tax.toFixed(2)}`);
-  doc.text(`Total: $${invoice.total.toFixed(2)}`);
+  // removed tax
+  doc.text(`Total: ${formatMoney(invoice.total, invoice.currency)}`);
   doc.moveDown();
   doc.text(`Notes: ${invoice.notes || "N/A"}`);
   if (invoice.dueDate) doc.text(`Due Date: ${invoice.dueDate.toDateString()}`);
@@ -181,6 +184,11 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
     }/invoices/pay/${invoice._id}`;
   const pdfBuffer = await generateInvoicePDF(invoice, customer);
 
+  // Helper
+  const formatMoney = (amount) => {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: invoice.currency || 'USD' }).format(amount || 0);
+  };
+
   const html = `
     <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
       <h2 style="color: #FFDD00; background: #000; padding: 15px; text-align: center;">
@@ -189,7 +197,7 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
       <div style="padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px;">
         <p>Hello <strong>${customer.name}</strong>,</p>
         <p>You have a new invoice from SwissEmbro.</p>
-        <p><strong>Total:</strong> $${invoice.total.toFixed(2)}</p>
+        <p><strong>Total:</strong> ${formatMoney(invoice.total)}</p>
         <p style="margin-top: 20px;">
           <a href="${paymentLink}" 
              style="background: #FFDD00; color: #000; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">

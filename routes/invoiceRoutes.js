@@ -44,7 +44,7 @@ router.get("/my", protect, authorize("customer"), async (req, res) => {
 =============================== */
 router.post("/create", protect, authorize("admin"), async (req, res) => {
   try {
-    const { orderId, items, subtotal, total, notes, dueDate, country, currency, currencySymbol } = req.body;
+    const { orderId, items, subtotal, tax, total, notes, dueDate, currency } = req.body;
 
     // Fetch order
     const order = await Order.findById(orderId);
@@ -60,12 +60,11 @@ router.post("/create", protect, authorize("admin"), async (req, res) => {
       orderId: order._id,
       items,
       subtotal,
+      tax,
       total,
       notes,
       dueDate,
-      country: country || "USA",
       currency: currency || "USD",
-      currencySymbol: currencySymbol || "$",
       orderTotal: order.totalAmount || 0,
       generatedByAdmin: true,
     });
