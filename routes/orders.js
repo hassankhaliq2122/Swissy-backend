@@ -26,7 +26,7 @@ const storage = multer.diskStorage({
 
 const ALLOWED_EXTENSIONS = [
   '.jpg', '.jpeg', '.png', '.pdf', '.svg', '.webp',
-  '.ai', '.eps', '.cdr', '.dst', '.emb', '.pes', '.pxf', '.ofm'
+  '.ai', '.eps', '.cdr', '.dst','.dgt', '.emb', '.pes', '.pxf', '.ofm'
 ];
 
 const fileFilter = (req, file, cb) => {
