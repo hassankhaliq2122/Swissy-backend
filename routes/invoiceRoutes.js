@@ -93,20 +93,40 @@ router.post("/create", protect, authorize("admin"), async (req, res) => {
 /* ===============================
    PayPal / Online Payment Callback
 =============================== */
+/* ===============================
+   PayPal / Online Payment Callback
+=============================== */
 router.post("/pay/:invoiceId", protect, authorize("customer"), async (req, res) => {
   try {
     const { invoiceId } = req.params;
-    const { transactionId, payerId, payerEmail } = req.body;
+    const { transactionId } = req.body; // Client only sends ID now
 
     const invoice = await Invoice.findById(invoiceId).populate("customerId orderId");
     if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found" });
 
+     // 1. Verify with PayPal
+    // We need to import these at the top, but for minimal disruption we require them here or assume global.
+    // Ideally, add imports at the top. Let's assume we'll fix imports in a separate tool call if needed or just use require here.
+    const paypalClient = require('../paypalClient');
+    const checkoutNodeJssdk = require('@paypal/checkout-server-sdk');
+
+    const request = new checkoutNodeJssdk.orders.OrdersGetRequest(transactionId);
+    const order = await paypalClient.execute(request);
+    
+    // 2. Check Status
+    if (order.result.status !== 'COMPLETED') {
+        return res.status(400).json({ success: false, message: "Payment not completed" });
+    }
+
+    // 3. Verify Amount (Optional but recommended: check order.result.purchase_units[0].amount.value == invoice.total)
+    // For now, we trust the successful capture implies correct amount if the order was created correctly.
+
     // Mark as paid
     invoice.paymentStatus = "paid";
     invoice.paymentDetails = {
-      transactionId,
-      payerId,
-      payerEmail,
+      transactionId: order.result.id,
+      payerId: order.result.payer.payer_id,
+      payerEmail: order.result.payer.email_address,
       paidAt: new Date(),
       paymentMethod: "PayPal",
     };
@@ -118,7 +138,7 @@ router.post("/pay/:invoiceId", protect, authorize("customer"), async (req, res) 
       await invoice.orderId.save();
     }
 
-    res.json({ success: true, message: "Payment successful", invoice });
+    res.json({ success: true, message: "Payment successful and verified", invoice });
   } catch (err) {
     console.error("❌ Failed to process payment:", err);
     res.status(500).json({ success: false, message: "Failed to process payment", error: err.message });

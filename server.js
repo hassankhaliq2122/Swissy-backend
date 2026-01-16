@@ -26,6 +26,8 @@ console.log(`   - Time: ${new Date().toISOString()}`);
 // ============================
 const app = express();
 const server = http.createServer(app);
+const helmet = require("helmet");
+app.use(helmet());
 
 // ============================
 // 🌐 CORS Configuration
@@ -109,6 +111,7 @@ try {
   app.use("/api/upload", require("./routes/upload"));
   app.use("/api/activity", require("./routes/activity"));
   app.use("/api/cloudinary", require("./routes/cloudinary"));
+  app.use("/api/webhooks", require("./routes/webhookRoutes")); // 🔔 Webhooks
 } catch (err) {
   console.log("error", err);
   console.error("❌ Error loading routes:", err.message);
