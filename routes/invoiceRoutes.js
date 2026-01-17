@@ -25,8 +25,14 @@ const authorize = (roles = []) => {
 =============================== */
 router.get("/public/:id", async (req, res) => {
   try {
-    const invoice = await Invoice.findById(req.params.id);
+    const invoice = await Invoice.findById(req.params.id).populate("orderId");
     if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found" });
+
+    // Resolve design name based on order type
+    let designName = "Custom Order";
+    if (invoice.orderId) {
+      designName = invoice.orderId.patchDesignName || invoice.orderId.designName || "Custom Order";
+    }
 
     // Return only necessary details for payment
     res.json({
@@ -34,6 +40,8 @@ router.get("/public/:id", async (req, res) => {
       invoice: {
         _id: invoice._id,
         invoiceNumber: invoice.invoiceNumber,
+        orderNumber: invoice.orderId ? invoice.orderId.orderNumber : "N/A",
+        designName: designName,
         total: invoice.total,
         currency: invoice.currency,
         status: invoice.paymentStatus,
