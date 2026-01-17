@@ -20,6 +20,82 @@ const authorize = (roles = []) => {
 };
 
 /* ===============================
+   Public Invoice Fetch (for email links)
+   NO AUTH REQUIRED
+=============================== */
+router.get("/public/:id", async (req, res) => {
+  try {
+    const invoice = await Invoice.findById(req.params.id);
+    if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found" });
+
+    // Return only necessary details for payment
+    res.json({
+      success: true,
+      invoice: {
+        _id: invoice._id,
+        invoiceNumber: invoice.invoiceNumber,
+        total: invoice.total,
+        currency: invoice.currency,
+        status: invoice.paymentStatus,
+        items: invoice.items
+      }
+    });
+  } catch (err) {
+    console.error("❌ Failed to fetch public invoice:", err);
+    res.status(500).json({ success: false, message: "Failed to fetch invoice" });
+  }
+});
+
+/* ===============================
+   Public Payment Verification (No Auth)
+   Verifies PayPal transaction for a specific invoice
+=============================== */
+router.post("/public/pay/:invoiceId", async (req, res) => {
+  try {
+    const { invoiceId } = req.params;
+    const { transactionId } = req.body;
+
+    const invoice = await Invoice.findById(invoiceId).populate("customerId orderId");
+    if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found" });
+
+    // 1. Verify with PayPal
+    // We ideally should move imports to top, but using require here ensures it works without extensive refactoring of imports at top
+    const paypalClient = require('../paypalClient');
+    const checkoutNodeJssdk = require('@paypal/checkout-server-sdk');
+
+    const request = new checkoutNodeJssdk.orders.OrdersGetRequest(transactionId);
+    const order = await paypalClient.execute(request);
+    
+    // 2. Check Status
+    if (order.result.status !== 'COMPLETED') {
+        return res.status(400).json({ success: false, message: "Payment not completed" });
+    }
+
+    // Mark as paid
+    invoice.paymentStatus = "paid";
+    invoice.paymentDetails = {
+      transactionId: order.result.id,
+      payerId: order.result.payer.payer_id,
+      payerEmail: order.result.payer.email_address,
+      paidAt: new Date(),
+      paymentMethod: "PayPal",
+    };
+    await invoice.save();
+
+    // Update linked order status
+    if (invoice.orderId) {
+      invoice.orderId.invoiceStatus = "paid";
+      await invoice.orderId.save();
+    }
+
+    res.json({ success: true, message: "Payment successful and verified", invoice });
+  } catch (err) {
+    console.error("❌ Failed to process public payment:", err);
+    res.status(500).json({ success: false, message: "Failed to process payment", error: err.message });
+  }
+});
+
+/* ===============================
    Fetch invoices for logged-in customer
 =============================== */
 router.get("/my", protect, authorize("customer"), async (req, res) => {
