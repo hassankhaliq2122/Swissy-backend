@@ -90,7 +90,7 @@ router.post('/create-order', protect, authorize('customer'), async (req, res) =>
             currency: invoice.currency || 'USD',
             countryCode: countryCode,
             invoiceId: invoice._id.toString(),
-            description: `Invoice ${invoice.invoiceNumber} - SwissEmbro`
+            description: `Invoice ${invoice.invoiceNumber} - SwissEmbroPatches`
         });
 
         console.log(`💳 Payment initiated for invoice ${invoice.invoiceNumber} using ${countryCode === 'US' ? 'USA' : 'Europe'} PayPal account`);

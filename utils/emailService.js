@@ -26,7 +26,7 @@ exports.sendEmail = async ({ email, subject, html, attachments }) => {
     const fromEmail = process.env.EMAIL_FROM || "onboarding@resend.dev";
 
     const emailOptions = {
-      from: `SwissEmbro <${fromEmail}>`,
+      from: `SwissEmbroPatches <${fromEmail}>`,
       to: email,
       subject,
       html,
@@ -126,7 +126,7 @@ const generateInvoicePDF = async (invoice, customer) => {
   doc.pipe(bufferStream);
 
   // Header
-  doc.fontSize(20).text("SwissEmbro", { align: "center" });
+  doc.fontSize(20).text("SwissEmbroPatches", { align: "center" });
   doc.moveDown();
   doc
     .fontSize(16)
@@ -196,7 +196,7 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
       </h2>
       <div style="padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px;">
         <p>Hello <strong>${customer.name}</strong>,</p>
-        <p>You have a new invoice from SwissEmbro.</p>
+        <p>You have a new invoice from SwissEmbroPatches.</p>
         <p><strong>Total:</strong> ${formatMoney(invoice.total)}</p>
         <p style="margin-top: 20px;">
           <a href="${paymentLink}" 
@@ -211,7 +211,7 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
 
   return await exports.sendEmail({
     email: customer.email,
-    subject: `Invoice ${invoice.invoiceNumber} - SwissEmbro`,
+    subject: `Invoice ${invoice.invoiceNumber} - SwissEmbroPatches`,
     html,
     attachments: [
       {
@@ -248,7 +248,7 @@ exports.sendOrderAssignmentEmail = async (
     <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
       <!-- Header -->
       <div style="background: #000; padding: 30px; text-align: center;">
-        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">SwissEmbro</h1>
+        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">SwissEmbroPatches</h1>
         <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">Order Management System</p>
       </div>
 
@@ -335,7 +335,7 @@ exports.sendOrderAssignmentEmail = async (
 
       <!-- Footer -->
       <div style="background: #000; padding: 20px 30px; text-align: center; color: #999; font-size: 13px;">
-        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbro. All rights reserved.</p>
+        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbroPatches. All rights reserved.</p>
         <p style="margin: 5px 0;">This is an automated notification. Please do not reply to this email.</p>
       </div>
     </div>
@@ -397,7 +397,7 @@ exports.sendBulkOrderAssignmentEmail = async (
     <div style="font-family: Arial, sans-serif; max-width: 750px; margin: 0 auto; background: #fff;">
       <!-- Header -->
       <div style="background: #000; padding: 30px; text-align: center;">
-        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">SwissEmbro</h1>
+        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">SwissEmbroPatches</h1>
         <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">Order Management System</p>
       </div>
 
@@ -459,7 +459,7 @@ exports.sendBulkOrderAssignmentEmail = async (
 
       <!-- Footer -->
       <div style="background: #000; padding: 20px 30px; text-align: center; color: #999; font-size: 13px;">
-        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbro. All rights reserved.</p>
+        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbroPatches. All rights reserved.</p>
         <p style="margin: 5px 0;">This is an automated notification. Please do not reply to this email.</p>
       </div>
     </div>
@@ -479,7 +479,7 @@ exports.sendCustomOrderEmail = async (customerEmail, orderNumber, message, attac
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
       <div style="background: #000; padding: 20px; text-align: center;">
-        <h1 style="color: #FFDD00; margin: 0; font-size: 24px;">SwissEmbro</h1>
+        <h1 style="color: #FFDD00; margin: 0; font-size: 24px;">SwissEmbroPatches</h1>
       </div>
       
       <div style="padding: 30px 20px; background: #f9f9f9;">
@@ -502,7 +502,7 @@ exports.sendCustomOrderEmail = async (customerEmail, orderNumber, message, attac
       </div>
       
       <div style="background: #eee; padding: 15px; text-align: center; color: #888; font-size: 12px;">
-        &copy; ${new Date().getFullYear()} SwissEmbro. All rights reserved.
+        &copy; ${new Date().getFullYear()} Patches. All rights reserved.
       </div>
     </div>
   `;
@@ -539,7 +539,7 @@ exports.sendCustomerOrderConfirmation = async (customer, order) => {
     <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
       <!-- Header -->
       <div style="background: #000; padding: 30px; text-align: center;">
-        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">SwissEmbro</h1>
+        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">SwissEmbroPatches</h1>
         <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">Order Management System</p>
       </div>
 
@@ -552,7 +552,7 @@ exports.sendCustomerOrderConfirmation = async (customer, order) => {
         </p>
         
         <p style="color: #555; font-size: 16px; line-height: 1.6;">
-          Thank you for placing your order with SwissEmbro! Your order has been received and is being processed.
+          Thank you for placing your order with SwissEmbroPatches! Your order has been received and is being processed.
         </p>
 
         <!-- Order Details Card -->
@@ -621,7 +621,7 @@ exports.sendCustomerOrderConfirmation = async (customer, order) => {
 
       <!-- Footer -->
       <div style="background: #000; padding: 20px 30px; text-align: center; color: #999; font-size: 13px;">
-        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbro. All rights reserved.</p>
+        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbroPatches. All rights reserved.</p>
         <p style="margin: 5px 0;">This is an automated notification. Please do not reply to this email.</p>
       </div>
     </div>
@@ -656,8 +656,8 @@ exports.sendAdminNewOrderEmail = async (adminEmail, order, customer) => {
     <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
       <!-- Header -->
       <div style="background: linear-gradient(135deg, #000 0%, #1a1a1a 100%); padding: 30px; text-align: center;">
-        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">SwissEmbro</h1>
-        <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">SwissEmbro - Admin Notification</p>
+        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">SwissEmbroPatches</h1>
+        <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">SwissEmbroPatches - Admin Notification</p>
       </div>
 
       <!-- Main Content -->
@@ -738,7 +738,7 @@ exports.sendAdminNewOrderEmail = async (adminEmail, order, customer) => {
 
       <!-- Footer -->
       <div style="background: #000; padding: 20px 30px; text-align: center; color: #999; font-size: 13px;">
-        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbro. All rights reserved.</p>
+        <p style="margin: 5px 0;">© ${new Date().getFullYear()} Patches. All rights reserved.</p>
         <p style="margin: 5px 0;">This is an automated notification. Please do not reply to this email.</p>
       </div>
     </div>
@@ -795,7 +795,7 @@ exports.sendCustomerStatusUpdateEmail = async (
       <!-- Header -->
       <div style="background: linear-gradient(135deg, #000 0%, #1a1a1a 100%); padding: 30px; text-align: center;">
         <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">📦 Order Status Updated</h1>
-        <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">SwissEmbro - Order Notification</p>
+        <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">SwissEmbroPatches - Order Notification</p>
       </div>
 
       <!-- Main Content -->
@@ -877,7 +877,7 @@ exports.sendCustomerStatusUpdateEmail = async (
 
       <!-- Footer -->
       <div style="background: #000; padding: 20px 30px; text-align: center; color: #999; font-size: 13px;">
-        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbro. All rights reserved.</p>
+        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbroPatches. All rights reserved.</p>
         <p style="margin: 5px 0;">Questions? Contact us at support@SwissEmbro.com</p>
       </div>
     </div>
@@ -912,7 +912,7 @@ exports.sendTrackingNumberEmail = async (customer, order, trackingNumber) => {
       <!-- Header -->
       <div style="background: linear-gradient(135deg, #000 0%, #1a1a1a 100%); padding: 30px; text-align: center;">
         <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">🚚 Your Order is On The Way!</h1>
-        <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">SwissEmbro - Tracking Number Added</p>
+        <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">SwissEmbroPatches - Tracking Number Added</p>
       </div>
 
       <!-- Main Content -->
@@ -988,13 +988,13 @@ exports.sendTrackingNumberEmail = async (customer, order, trackingNumber) => {
         </div>
 
         <p style="color: #666; font-size: 14px; line-height: 1.6; margin-top: 30px; text-align: center;">
-          Thank you for choosing SwissEmbro. Your order is on its way to you!
+          Thank you for choosing SwissEmbroPatches. Your order is on its way to you!
         </p>
       </div>
 
       <!-- Footer -->
       <div style="background: #000; padding: 20px 30px; text-align: center; color: #999; font-size: 13px;">
-        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbro. All rights reserved.</p>
+        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbroPatches. All rights reserved.</p>
         <p style="margin: 5px 0;">Questions? Contact us at support@swissembro.com</p>
       </div>
     </div>

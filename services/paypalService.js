@@ -129,7 +129,7 @@ async function createPayPalOrder({ amount, currency, countryCode, invoiceId, des
                 }
             }],
             application_context: {
-                brand_name: 'SwissEmbro',
+                brand_name: 'SwissEmbroPatches',
                 landing_page: 'BILLING',
                 user_action: 'PAY_NOW',
                 return_url: process.env.PAYPAL_RETURN_URL || 'http://localhost:5173/payment/success',
