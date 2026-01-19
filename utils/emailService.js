@@ -26,7 +26,7 @@ exports.sendEmail = async ({ email, subject, html, attachments }) => {
     const fromEmail = process.env.EMAIL_FROM || "onboarding@resend.dev";
 
     const emailOptions = {
-      from: `SwissEmbro <${fromEmail}>`,
+      from: `Swissembro Patches <${fromEmail}>`,
       to: email,
       subject,
       html,
@@ -119,7 +119,7 @@ exports.sendOrderStatusUpdate = async (customerEmail, orderNumber, status) => {
 /* ===============================
    GENERATE PDF INVOICE
 =============================== */
-const generateInvoicePDF = async (invoice, customer) => {
+exports.generateInvoicePDF = async (invoice, customer) => {
   const doc = new PDFDocument({ size: "A4", margin: 50 });
   const bufferStream = new streamBuffers.WritableStreamBuffer();
 
@@ -129,90 +129,148 @@ const generateInvoicePDF = async (invoice, customer) => {
   const fs = require('fs');
   const logoPath = path.join(__dirname, '..', 'assets', 'logo.png');
 
+  // Colors
+  const black = "#000000";
+  const yellowTheme = "#FFDD00";
+  const pureWhite = "#FFFFFF";
+  const lightGrey = "#F2F2F2";
+  const darkGrey = "#333333";
+
   // Helper for currency
   const formatMoney = (amount, currency = 'USD') => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(amount || 0);
   };
 
-  // --- Header ---
+  // Header Section
+  // Full-width black header
+  doc.rect(0, 0, doc.page.width, 140).fill(black);
+
+  const headerY = 35;
+  
+  // Large INVOICE on the right
+  doc
+    .fillColor(yellowTheme)
+    .font("Helvetica-Bold")
+    .fontSize(40)
+    .text("INVOICE", 50, headerY, { align: "right" });
+
+  // Company Name/Logo in Header
   if (fs.existsSync(logoPath)) {
-    doc.image(logoPath, 50, 45, { width: 100 });
+    doc.image(logoPath, 50, headerY - 5, { width: 130 });
   } else {
-    doc.fontSize(20).text("SwissEmbro", 50, 45);
+    doc.fillColor(yellowTheme).font("Helvetica-Bold").fontSize(26).text("Swissembro Patches", 50, headerY);
   }
 
+  // Company Info in Header
+  const companyInfoY = headerY + 45;
   doc
-    .fillColor("#444444")
-    .fontSize(20)
-    .text("INVOICE", 50, 45, { align: "right" });
-
-  doc
-    .fillColor("#444444")
     .fontSize(10)
-    .text(`Invoice for Order #: ${invoice.orderId?.orderNumber || (invoice.orderNumber ? invoice.orderNumber : 'N/A')}`, 50, 70, { align: "right" })
-    .text(`Date: ${new Date().toLocaleDateString()}`, 50, 85, { align: "right" })
-    .text(`Due Date: ${invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : "Upon Receipt"}`, 50, 100, { align: "right" })
-    .moveDown();
+    .font("Helvetica")
+    .fillColor(yellowTheme)
+    .text("www.swissembropatches.org", 50, companyInfoY)
+    .text("accounts@swissembropatches.com", 50, companyInfoY + 15);
 
-  // Draw a horizontal line
-  doc.strokeColor("#aaaaaa").lineWidth(1).moveTo(50, 125).lineTo(550, 125).stroke();
+  // Invoice Details below INVOICE title
+  const detailsY_adj = headerY + 55;
+  const rightColumnX = 350;
+  
+  doc
+    .fillColor(pureWhite)
+    .fontSize(9)
+    .font("Helvetica-Bold").text("Invoice #:", rightColumnX, detailsY_adj)
+    .font("Helvetica").text(invoice.orderId?.orderNumber || invoice.invoiceNumber, rightColumnX + 80, detailsY_adj, { align: "right", width: 115 })
+    
+    .font("Helvetica-Bold").text("Date:", rightColumnX, detailsY_adj + 15)
+    .font("Helvetica").text(new Date().toLocaleDateString(), rightColumnX + 80, detailsY_adj + 15, { align: "right", width: 115 })
 
-  // --- Customer/Company Info ---
-  doc.fontSize(10).font("Helvetica-Bold").text("Billed To:", 50, 140);
-  doc.font("Helvetica").text(customer.name, 50, 155);
-  if (customer.address) {
-    doc.text(
-      `${customer.address.street || ""}, ${customer.address.city || ""}, ${customer.address.state || ""} ${customer.address.zipCode || ""}`,
-      50,
-      170
-    );
-  }
-  doc.text(customer.email, 50, 185);
+    .font("Helvetica-Bold").text("Due date:", rightColumnX, detailsY_adj + 30)
+    .font("Helvetica").text(invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : "Upon Receipt", rightColumnX + 80, detailsY_adj + 30, { align: "right", width: 115 })
+    
+    .font("Helvetica-Bold").text("Currency:", rightColumnX, detailsY_adj + 45)
+    .font("Helvetica").text(`${invoice.currency || "USD"}`, rightColumnX + 80, detailsY_adj + 45, { align: "right", width: 115 });
 
-  // --- Items Table ---
-  let tableTop = 230;
+  // Bill To section
+  const billToY = 160;
+  doc
+    .fillColor(black)
+    .font("Helvetica-Bold")
+    .fontSize(11)
+    .text("Bill to:", 50, billToY)
+    .font("Helvetica")
+    .fontSize(10)
+    .text(customer.name, 50, billToY + 15)
+    .text(customer.email, 50, billToY + 28);
 
-  doc.font("Helvetica-Bold");
-  doc.text("Description", 50, tableTop);
-  doc.text("Quantity", 280, tableTop, { width: 90, align: "right" });
-  doc.text("Price", 370, tableTop, { width: 90, align: "right" });
-  doc.text("Total", 460, tableTop, { width: 90, align: "right" });
+  // Table Section
+  let tableTop = billToY + 55;
 
-  doc.strokeColor("#aaaaaa").lineWidth(1).moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).stroke();
+  // Table Header
+  doc.rect(50, tableTop - 5, 495, 25).fill(black);
+  
+  doc.fillColor(yellowTheme).font("Helvetica-Bold").fontSize(10);
+  doc.text("DESCRIPTION", 65, tableTop + 2);
+  doc.text("QTY", 310, tableTop + 2, { width: 70, align: "center" });
+  doc.text("PRICE", 380, tableTop + 2, { width: 80, align: "right" });
+  doc.text("AMOUNT", 465, tableTop + 2, { width: 70, align: "right" });
 
-  let i = 0;
-  invoice.items.forEach((item) => {
-    const y = tableTop + 30 + (i * 25);
-    doc.font("Helvetica").fontSize(10);
-    doc.text(item.description, 50, y);
-    doc.text(item.quantity.toString(), 280, y, { width: 90, align: "right" });
-    doc.text(formatMoney(item.price, invoice.currency), 370, y, { width: 90, align: "right" });
-    doc.text(formatMoney(item.quantity * item.price, invoice.currency), 460, y, { width: 90, align: "right" });
-    i++;
+  let currentY = tableTop + 25;
+  invoice.items.forEach((item, index) => {
+    if (index % 2 === 1) {
+        doc.rect(50, currentY - 5, 495, 20).fill(lightGrey);
+    }
+
+    doc.fillColor(black).font("Helvetica").fontSize(10);
+    doc.text(item.description, 65, currentY);
+    doc.text(item.quantity.toString(), 310, currentY, { width: 70, align: "center" });
+    doc.text(formatMoney(item.price, invoice.currency), 380, currentY, { width: 80, align: "right" });
+    doc.text(formatMoney(item.quantity * item.price, invoice.currency), 465, currentY, { width: 70, align: "right" });
+    
+    currentY += 20;
   });
 
-  const footerTop = tableTop + 30 + (invoice.items.length * 25) + 20;
-  doc.strokeColor("#aaaaaa").lineWidth(1).moveTo(50, footerTop).lineTo(550, footerTop).stroke();
+  // Summary Totals
+  const footerX = 350;
+  let summaryY = currentY + 15;
 
-  // --- Subtotal/Total ---
-  doc.font("Helvetica-Bold").fontSize(12);
-  doc.text("Grand Total:", 370, footerTop + 15, { width: 90, align: "right" });
-  doc.text(formatMoney(invoice.total, invoice.currency), 460, footerTop + 15, { width: 90, align: "right" });
+  doc.fillColor(black).font("Helvetica-Bold").fontSize(10).text("Subtotal", footerX, summaryY);
+  doc.font("Helvetica").text(formatMoney(invoice.subtotal || invoice.total, invoice.currency), 465, summaryY, { width: 70, align: "right" });
+  
+  summaryY += 18;
+  doc.fillColor(black).font("Helvetica-Bold").text("Shipping", footerX, summaryY);
+  doc.font("Helvetica").text(formatMoney(0, invoice.currency), 465, summaryY, { width: 70, align: "right" });
 
-  // --- Notes ---
+  summaryY += 15;
+  
+  // Total Box
+  doc.rect(348, summaryY, 197, 35).fill(yellowTheme);
+  
+  doc.fillColor(black).font("Helvetica-Bold").fontSize(11);
+  doc.text("TOTAL DUE", footerX, summaryY + 10);
+  doc.fontSize(13).text(`${formatMoney(invoice.total, invoice.currency)} ${invoice.currency || "USD"}`, 420, summaryY + 10, { width: 115, align: "right" });
+
+  // combined Notes & Instructions
+  currentY = summaryY + 50;
+  
+  doc.rect(50, currentY, 495, 20).fill(black);
+  doc.fillColor(yellowTheme).font("Helvetica-Bold").fontSize(10).text("IMPORTANT INSTRUCTIONS:", 65, currentY + 5);
+  
+  doc.fillColor(black).font("Helvetica").fontSize(9)
+    .text("Once you have paid the invoice kindly email the proof of payment at accounts@swissembropatches.com OR whatsapp us at (+44 7782294364)", 50, currentY + 25, { width: 495 });
+
   if (invoice.notes) {
-    doc.fontSize(10).font("Helvetica-Bold").text("Notes:", 50, footerTop + 50);
-    doc.font("Helvetica").text(invoice.notes, 50, footerTop + 65, { width: 300 });
+    doc.moveDown(0.5);
+    doc.fillColor(black).font("Helvetica-Bold").text("NOTES:");
+    doc.font("Helvetica").text(invoice.notes, { width: 495 });
   }
 
-  // --- Professional Footer ---
+  // Final Footer
   const pageHeight = doc.page.height;
-  doc.fontSize(10).font("Helvetica-Bold").text("Thank you for your business!", 50, pageHeight - 100, { align: "center", width: 500 });
+  doc.rect(0, pageHeight - 50, doc.page.width, 50).fill(black);
+  doc.fontSize(10).font("Helvetica-Bold").fillColor(yellowTheme)
+    .text("THANK YOU FOR CHOOSING SWISSEMBRO PATCHES!", 0, pageHeight - 35, { align: "center", width: doc.page.width });
   
-  doc.fontSize(9).font("Helvetica").fillColor("#777777");
-  doc.text("Contact us:", 50, pageHeight - 80, { align: "center", width: 500 });
-  doc.text("Email: info@swissembropatches.org | Phone: +1 (555) 000-0000", 50, pageHeight - 65, { align: "center", width: 500 });
-  doc.text("Website: https://swissembropatches.org", 50, pageHeight - 50, { align: "center", width: 500 });
+  doc.fontSize(8).font("Helvetica").fillColor(pureWhite)
+    .text("Swiss Quality Embroidery | Premium Designs", 0, pageHeight - 20, { align: "center", width: doc.page.width });
 
   doc.end();
 
@@ -242,7 +300,7 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
 
   const paymentLink = `${process.env.FRONTEND_URL || "https://swissembropatches.org"
     }/invoices/pay/${invoice._id}`;
-  const pdfBuffer = await generateInvoicePDF(invoice, customer);
+  const pdfBuffer = await exports.generateInvoicePDF(invoice, customer);
 
   // Helper
   const formatMoney = (amount) => {
@@ -256,8 +314,8 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
       </h2>
       <div style="padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px;">
         <p>Hello <strong>${customer.name}</strong>,</p>
-        <p>You have a new invoice from SwissEmbro.</p>
-        <p><strong>Total:</strong> ${formatMoney(invoice.total)}</p>
+        <p>You have a new invoice from <strong>Swissembro Patches</strong>.</p>
+        <p><strong>Total Amount:</strong> ${formatMoney(invoice.total)}</p>
         <p style="margin-top: 20px;">
           <a href="${paymentLink}" 
              style="background: #FFDD00; color: #000; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
@@ -265,13 +323,17 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
           </a>
         </p>
         <p>Attached is a PDF copy of your invoice.</p>
+        <hr style="border: 1px solid #eee; margin: 20px 0;">
+        <p style="font-size: 14px; color: #555;">
+          <strong>Important:</strong> Once you have paid the invoice kindly email the proof of payment at <a href="mailto:accounts@swissembropatches.com">accounts@swissembropatches.com</a> OR WhatsApp us at <strong>(+44 7782294364)</strong>.
+        </p>
       </div>
     </div>
   `;
 
   return await exports.sendEmail({
     email: customer.email,
-    subject: `Invoice ${invoice.invoiceNumber} - SwissEmbro`,
+    subject: `Invoice ${invoice.invoiceNumber} - Swissembro Patches`,
     html,
     attachments: [
       {
@@ -308,7 +370,7 @@ exports.sendOrderAssignmentEmail = async (
     <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
       <!-- Header -->
       <div style="background: #000; padding: 30px; text-align: center;">
-        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">SwissEmbro</h1>
+        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">Swissembro Patches</h1>
         <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">Order Management System</p>
       </div>
 
@@ -395,7 +457,7 @@ exports.sendOrderAssignmentEmail = async (
 
       <!-- Footer -->
       <div style="background: #000; padding: 20px 30px; text-align: center; color: #999; font-size: 13px;">
-        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbro. All rights reserved.</p>
+        <p style="margin: 5px 0;">© ${new Date().getFullYear()} Swissembro Patches. All rights reserved.</p>
         <p style="margin: 5px 0;">This is an automated notification. Please do not reply to this email.</p>
       </div>
     </div>
@@ -457,7 +519,7 @@ exports.sendBulkOrderAssignmentEmail = async (
     <div style="font-family: Arial, sans-serif; max-width: 750px; margin: 0 auto; background: #fff;">
       <!-- Header -->
       <div style="background: #000; padding: 30px; text-align: center;">
-        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">SwissEmbro</h1>
+        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">Swissembro Patches</h1>
         <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">Order Management System</p>
       </div>
 
@@ -519,7 +581,7 @@ exports.sendBulkOrderAssignmentEmail = async (
 
       <!-- Footer -->
       <div style="background: #000; padding: 20px 30px; text-align: center; color: #999; font-size: 13px;">
-        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbro. All rights reserved.</p>
+        <p style="margin: 5px 0;">© ${new Date().getFullYear()} Swissembro Patches. All rights reserved.</p>
         <p style="margin: 5px 0;">This is an automated notification. Please do not reply to this email.</p>
       </div>
     </div>
@@ -539,7 +601,7 @@ exports.sendCustomOrderEmail = async (customerEmail, orderNumber, message, attac
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
       <div style="background: #000; padding: 20px; text-align: center;">
-        <h1 style="color: #FFDD00; margin: 0; font-size: 24px;">SwissEmbro</h1>
+        <h1 style="color: #FFDD00; margin: 0; font-size: 24px;">Swissembro Patches</h1>
       </div>
       
       <div style="padding: 30px 20px; background: #f9f9f9;">
@@ -562,7 +624,7 @@ exports.sendCustomOrderEmail = async (customerEmail, orderNumber, message, attac
       </div>
       
       <div style="background: #eee; padding: 15px; text-align: center; color: #888; font-size: 12px;">
-        &copy; ${new Date().getFullYear()} SwissEmbro. All rights reserved.
+        &copy; ${new Date().getFullYear()} Swissembro Patches. All rights reserved.
       </div>
     </div>
   `;
@@ -599,7 +661,7 @@ exports.sendCustomerOrderConfirmation = async (customer, order) => {
     <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
       <!-- Header -->
       <div style="background: #000; padding: 30px; text-align: center;">
-        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">SwissEmbro</h1>
+        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">Swissembro Patches</h1>
         <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">Order Management System</p>
       </div>
 
@@ -612,7 +674,7 @@ exports.sendCustomerOrderConfirmation = async (customer, order) => {
         </p>
         
         <p style="color: #555; font-size: 16px; line-height: 1.6;">
-          Thank you for placing your order with SwissEmbro! Your order has been received and is being processed.
+          Thank you for placing your order with Swissembro Patches! Your order has been received and is being processed.
         </p>
 
         <!-- Order Details Card -->
@@ -681,7 +743,7 @@ exports.sendCustomerOrderConfirmation = async (customer, order) => {
 
       <!-- Footer -->
       <div style="background: #000; padding: 20px 30px; text-align: center; color: #999; font-size: 13px;">
-        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbro. All rights reserved.</p>
+        <p style="margin: 5px 0;">© ${new Date().getFullYear()} Swissembro Patches. All rights reserved.</p>
         <p style="margin: 5px 0;">This is an automated notification. Please do not reply to this email.</p>
       </div>
     </div>
@@ -716,8 +778,8 @@ exports.sendAdminNewOrderEmail = async (adminEmail, order, customer) => {
     <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
       <!-- Header -->
       <div style="background: linear-gradient(135deg, #000 0%, #1a1a1a 100%); padding: 30px; text-align: center;">
-        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">SwissEmbro</h1>
-        <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">SwissEmbro - Admin Notification</p>
+        <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">Swissembro Patches</h1>
+        <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">Swissembro Patches - Admin Notification</p>
       </div>
 
       <!-- Main Content -->
@@ -798,7 +860,7 @@ exports.sendAdminNewOrderEmail = async (adminEmail, order, customer) => {
 
       <!-- Footer -->
       <div style="background: #000; padding: 20px 30px; text-align: center; color: #999; font-size: 13px;">
-        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbro. All rights reserved.</p>
+        <p style="margin: 5px 0;">© ${new Date().getFullYear()} Swissembro Patches. All rights reserved.</p>
         <p style="margin: 5px 0;">This is an automated notification. Please do not reply to this email.</p>
       </div>
     </div>
@@ -855,7 +917,7 @@ exports.sendCustomerStatusUpdateEmail = async (
       <!-- Header -->
       <div style="background: linear-gradient(135deg, #000 0%, #1a1a1a 100%); padding: 30px; text-align: center;">
         <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">📦 Order Status Updated</h1>
-        <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">SwissEmbro - Order Notification</p>
+        <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">Swissembro Patches - Order Notification</p>
       </div>
 
       <!-- Main Content -->
@@ -931,14 +993,14 @@ exports.sendCustomerStatusUpdateEmail = async (
         </div>
 
         <p style="color: #666; font-size: 14px; line-height: 1.6; margin-top: 30px; text-align: center;">
-          Thank you for choosing SwissEmbro. We're committed to delivering quality work.
+          Thank you for choosing Swissembro Patches. We're committed to delivering quality work.
         </p>
       </div>
 
       <!-- Footer -->
       <div style="background: #000; padding: 20px 30px; text-align: center; color: #999; font-size: 13px;">
-        <p style="margin: 5px 0;">© ${new Date().getFullYear()} SwissEmbro. All rights reserved.</p>
-        <p style="margin: 5px 0;">Questions? Contact us at support@SwissEmbro.com</p>
+        <p style="margin: 5px 0;">© ${new Date().getFullYear()} Swissembro Patches. All rights reserved.</p>
+        <p style="margin: 5px 0;">Questions? Contact us at support@swissembropatches.com</p>
       </div>
     </div>
   `;
@@ -972,7 +1034,7 @@ exports.sendTrackingNumberEmail = async (customer, order, trackingNumber) => {
       <!-- Header -->
       <div style="background: linear-gradient(135deg, #000 0%, #1a1a1a 100%); padding: 30px; text-align: center;">
         <h1 style="color: #FFDD00; margin: 0; font-size: 28px;">🚚 Your Order is On The Way!</h1>
-        <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">SwissEmbro - Tracking Number Added</p>
+        <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px;">Swissembro Patches - Tracking Number Added</p>
       </div>
 
       <!-- Main Content -->
