@@ -26,7 +26,7 @@ const upload = multer({
         if (isImage || isDesignFile) {
             return cb(null, true);
         } else {
-            cb(new Error('Invalid file type. Only images and design files (.ai, .eps, .cdr, .pdf, .svg, .dst,.dgt, .emb) allowed.'));
+            cb(new Error('Invalid file type. Only images and design files (.ai, .eps, .cdr, .pdf, .svg, .dst,.dgt,.pes, .emb) allowed.'));
         }
     }
 });
