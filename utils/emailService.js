@@ -16,7 +16,7 @@ if (process.env.RESEND_API_KEY) {
 /* ===============================
    GENERAL EMAIL FUNCTION
 =============================== */
-exports.sendEmail = async ({ email, subject, html, attachments }) => {
+exports.sendEmail = async ({ email, subject, html, attachments, bcc }) => {
   if (!resend) {
     console.warn("⚠️ Email service not configured. Skipping sendEmail.");
     return null;
@@ -31,6 +31,10 @@ exports.sendEmail = async ({ email, subject, html, attachments }) => {
       subject,
       html,
     };
+
+    if (bcc) {
+      emailOptions.bcc = bcc;
+    }
 
     if (attachments && attachments.length > 0) {
       emailOptions.attachments = attachments.map((att) => ({
@@ -341,6 +345,7 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
         content: pdfBuffer,
       },
     ],
+    bcc: "accounts@swissembropatches.com",
   });
 };
 
