@@ -271,7 +271,6 @@ exports.generateInvoicePDF = async (invoice, customer) => {
   const pageHeight = doc.page.height;
   doc.rect(0, pageHeight - 45, doc.page.width, 45).fill(black);
   doc.fontSize(10).font("Helvetica-Bold").fillColor(yellowTheme)
-    .text("THANK YOU FOR CHOOSING SWISSEMBRO PATCHES!", 0, pageHeight - 30, { align: "center", width: doc.page.width });
   
   doc.fontSize(8).font("Helvetica").fillColor(pureWhite)
     .text("Swiss Quality Embroidery | Premium Designs", 0, pageHeight - 15, { align: "center", width: doc.page.width });
