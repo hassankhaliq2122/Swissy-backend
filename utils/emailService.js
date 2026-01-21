@@ -272,8 +272,7 @@ exports.generateInvoicePDF = async (invoice, customer) => {
   doc.rect(0, pageHeight - 45, doc.page.width, 45).fill(black);
   doc.fontSize(10).font("Helvetica-Bold").fillColor(yellowTheme)
   
-  doc.fontSize(8).font("Helvetica").fillColor(pureWhite)
-    .text("Swiss Quality Embroidery | Premium Designs", 0, pageHeight - 15, { align: "center", width: doc.page.width });
+
 
   doc.end();
 
