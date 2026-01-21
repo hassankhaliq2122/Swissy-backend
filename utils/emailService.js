@@ -131,8 +131,6 @@ exports.generateInvoicePDF = async (invoice, customer) => {
 
   doc.pipe(bufferStream);
 
-  doc.pipe(bufferStream);
-
   const logoPath = path.join(__dirname, "..", "assets", "logo.png");
 
   // Colors
