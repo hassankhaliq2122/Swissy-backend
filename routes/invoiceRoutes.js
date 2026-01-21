@@ -312,7 +312,7 @@ router.post("/preview", protect, authorize("admin"), async (req, res) => {
       invoiceNumber: `PREVIEW-${Date.now()}`,
       items,
       currency: currency || "USD",
-      total: items.reduce((sum, item) => sum + (item.quantity * item.price), 0),
+      total: items.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.price || 0)), 0),
       notes,
       dueDate: new Date().toLocaleDateString(),
     };
@@ -320,11 +320,10 @@ router.post("/preview", protect, authorize("admin"), async (req, res) => {
     const pdfBuffer = await generateInvoicePDF(mockInvoice, customer);
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "inline; filename=preview.pdf");
     res.send(pdfBuffer);
   } catch (err) {
     console.error("❌ Failed to generate invoice preview:", err);
-    res.status(500).json({ success: false, message: "Failed to generate preview", error: err.message });
+    res.status(500).json({ success: false, message: `Failed to generate preview: ${err.message}` });
   }
 });
 

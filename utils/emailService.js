@@ -1,6 +1,8 @@
 const { Resend } = require("resend");
 const PDFDocument = require("pdfkit");
 const streamBuffers = require("stream-buffers");
+const path = require("path");
+const fs = require("fs");
 
 /* ===============================
    SETUP RESEND CLIENT
@@ -129,9 +131,9 @@ exports.generateInvoicePDF = async (invoice, customer) => {
 
   doc.pipe(bufferStream);
 
-  const path = require('path');
-  const fs = require('fs');
-  const logoPath = path.join(__dirname, '..', 'assets', 'logo.png');
+  doc.pipe(bufferStream);
+
+  const logoPath = path.join(__dirname, "..", "assets", "logo.png");
 
   // Colors
   const black = "#000000";
