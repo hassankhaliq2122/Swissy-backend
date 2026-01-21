@@ -267,13 +267,6 @@ exports.generateInvoicePDF = async (invoice, customer) => {
     doc.font("Helvetica").text(invoice.notes, { width: 495 });
   }
 
-  // Final Footer
-  const pageHeight = doc.page.height;
-  doc.rect(0, pageHeight - 45, doc.page.width, 45).fill(black);
-  doc.fontSize(10).font("Helvetica-Bold").fillColor(yellowTheme)
-  
-
-
   doc.end();
 
   return new Promise((resolve, reject) => {
