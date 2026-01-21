@@ -124,7 +124,7 @@ exports.sendOrderStatusUpdate = async (customerEmail, orderNumber, status) => {
    GENERATE PDF INVOICE
 =============================== */
 exports.generateInvoicePDF = async (invoice, customer) => {
-  const doc = new PDFDocument({ size: "A4", margin: 50 });
+  const doc = new PDFDocument({ size: "A4", margin: 30 });
   const bufferStream = new streamBuffers.WritableStreamBuffer();
 
   doc.pipe(bufferStream);
@@ -147,9 +147,9 @@ exports.generateInvoicePDF = async (invoice, customer) => {
 
   // Header Section
   // Full-width black header
-  doc.rect(0, 0, doc.page.width, 140).fill(black);
+  doc.rect(0, 0, doc.page.width, 120).fill(black);
 
-  const headerY = 35;
+  const headerY = 25;
   
   // Large INVOICE on the right
   doc
@@ -166,7 +166,7 @@ exports.generateInvoicePDF = async (invoice, customer) => {
   }
 
   // Company Info in Header
-  const companyInfoY = headerY + 45;
+  const companyInfoY = headerY + 40;
   doc
     .fontSize(10)
     .font("Helvetica")
@@ -175,7 +175,7 @@ exports.generateInvoicePDF = async (invoice, customer) => {
     .text("accounts@swissembropatches.com", 50, companyInfoY + 15);
 
   // Invoice Details below INVOICE title
-  const detailsY_adj = headerY + 55;
+  const detailsY_adj = headerY + 50;
   const rightColumnX = 350;
   
   doc
@@ -194,7 +194,7 @@ exports.generateInvoicePDF = async (invoice, customer) => {
     .font("Helvetica").text(`${invoice.currency || "USD"}`, rightColumnX + 80, detailsY_adj + 45, { align: "right", width: 115 });
 
   // Bill To section
-  const billToY = 160;
+  const billToY = 140;
   doc
     .fillColor(black)
     .font("Helvetica-Bold")
@@ -202,11 +202,11 @@ exports.generateInvoicePDF = async (invoice, customer) => {
     .text("Bill to:", 50, billToY)
     .font("Helvetica")
     .fontSize(10)
-    .text(customer.name, 50, billToY + 15)
-    .text(customer.email, 50, billToY + 28);
+    .text(customer.name, 50, billToY + 13)
+    .text(customer.email, 50, billToY + 25);
 
   // Table Section
-  let tableTop = billToY + 55;
+  let tableTop = billToY + 45;
 
   // Table Header
   doc.rect(50, tableTop - 5, 495, 25).fill(black);
@@ -239,7 +239,7 @@ exports.generateInvoicePDF = async (invoice, customer) => {
   doc.fillColor(black).font("Helvetica-Bold").fontSize(10).text("Subtotal", footerX, summaryY);
   doc.font("Helvetica").text(formatMoney(invoice.subtotal || invoice.total, invoice.currency), 465, summaryY, { width: 70, align: "right" });
   
-  summaryY += 18;
+  summaryY += 15;
   doc.fillColor(black).font("Helvetica-Bold").text("Shipping", footerX, summaryY);
   doc.font("Helvetica").text(formatMoney(0, invoice.currency), 465, summaryY, { width: 70, align: "right" });
 
@@ -253,13 +253,13 @@ exports.generateInvoicePDF = async (invoice, customer) => {
   doc.fontSize(13).text(`${formatMoney(invoice.total, invoice.currency)} ${invoice.currency || "USD"}`, 420, summaryY + 10, { width: 115, align: "right" });
 
   // combined Notes & Instructions
-  currentY = summaryY + 50;
+  currentY = summaryY + 40;
   
-  doc.rect(50, currentY, 495, 20).fill(black);
-  doc.fillColor(yellowTheme).font("Helvetica-Bold").fontSize(10).text("IMPORTANT INSTRUCTIONS:", 65, currentY + 5);
+  doc.rect(50, currentY, 495, 18).fill(black);
+  doc.fillColor(yellowTheme).font("Helvetica-Bold").fontSize(9).text("IMPORTANT INSTRUCTIONS:", 65, currentY + 4);
   
-  doc.fillColor(black).font("Helvetica").fontSize(9)
-    .text("Once you have paid the invoice kindly email the proof of payment at accounts@swissembropatches.com OR whatsapp us at (+44 7782294364)", 50, currentY + 25, { width: 495 });
+  doc.fillColor(black).font("Helvetica").fontSize(8)
+    .text("Once you have paid the invoice kindly email the proof of payment at accounts@swissembropatches.com OR whatsapp us at (+44 7782294364)", 50, currentY + 22, { width: 495 });
 
   if (invoice.notes) {
     doc.moveDown(0.5);
@@ -269,12 +269,12 @@ exports.generateInvoicePDF = async (invoice, customer) => {
 
   // Final Footer
   const pageHeight = doc.page.height;
-  doc.rect(0, pageHeight - 50, doc.page.width, 50).fill(black);
+  doc.rect(0, pageHeight - 45, doc.page.width, 45).fill(black);
   doc.fontSize(10).font("Helvetica-Bold").fillColor(yellowTheme)
-    .text("THANK YOU FOR CHOOSING SWISSEMBRO PATCHES!", 0, pageHeight - 35, { align: "center", width: doc.page.width });
+    .text("THANK YOU FOR CHOOSING SWISSEMBRO PATCHES!", 0, pageHeight - 30, { align: "center", width: doc.page.width });
   
   doc.fontSize(8).font("Helvetica").fillColor(pureWhite)
-    .text("Swiss Quality Embroidery | Premium Designs", 0, pageHeight - 20, { align: "center", width: doc.page.width });
+    .text("Swiss Quality Embroidery | Premium Designs", 0, pageHeight - 15, { align: "center", width: doc.page.width });
 
   doc.end();
 
@@ -678,9 +678,7 @@ exports.sendCustomerOrderConfirmation = async (customer, order) => {
           Hello <strong>${customer.name}</strong>,
         </p>
         
-        <p style="color: #555; font-size: 16px; line-height: 1.6;">
-          Thank you for placing your order with Swissembro Patches! Your order has been received and is being processed.
-        </p>
+    
 
         <!-- Order Details Card -->
         <div style="background: #fff; border-left: 4px solid #FFDD00; padding: 20px; margin: 25px 0; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">

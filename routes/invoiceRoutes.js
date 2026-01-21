@@ -4,7 +4,7 @@ const Invoice = require("../models/Invoice");
 const Order = require("../models/Order");
 const User = require("../models/User");
 const { protect } = require("../middleware/auth");
-const { sendInvoiceEmail } = require("../utils/emailService");
+const { sendInvoiceEmail, generateInvoicePDF } = require("../utils/emailService");
 
 /* ===============================
    Role Authorization Middleware
@@ -288,6 +288,43 @@ router.post("/send/:invoiceId", protect, authorize("admin"), async (req, res) =>
       message: "Failed to send invoice",
       error: err.message,
     });
+  }
+});
+
+/* ===============================
+   Admin Preview Invoice (No Save)
+=============================== */
+router.post("/preview", protect, authorize("admin"), async (req, res) => {
+  try {
+    const { orderId, items, currency, notes } = req.body;
+
+    const order = await Order.findById(orderId).populate("customerId");
+    if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+
+    const customer = order.customerId;
+    if (!customer) return res.status(404).json({ success: false, message: "Customer not found" });
+
+    // Mock invoice object for PDF generation
+    const mockInvoice = {
+      orderId: {
+        orderNumber: order.orderNumber
+      },
+      invoiceNumber: `PREVIEW-${Date.now()}`,
+      items,
+      currency: currency || "USD",
+      total: items.reduce((sum, item) => sum + (item.quantity * item.price), 0),
+      notes,
+      dueDate: new Date().toLocaleDateString(),
+    };
+
+    const pdfBuffer = await generateInvoicePDF(mockInvoice, customer);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "inline; filename=preview.pdf");
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error("❌ Failed to generate invoice preview:", err);
+    res.status(500).json({ success: false, message: "Failed to generate preview", error: err.message });
   }
 });
 
