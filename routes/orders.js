@@ -902,8 +902,72 @@ router.delete('/:id', protect, async (req, res) => {
   }
 });
 /* ================================
-   UPLOAD SAMPLE IMAGE (Admin → Customer)
+   COMPLETE ORDER WITH FILES (Admin → Direct Complete)
 ================================ */
+router.post('/:id/complete-order', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Only admin can complete orders' });
+
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+
+    const { files, comments } = req.body; // Expecting Cloudinary file objects
+
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ success: false, message: 'Please upload at least one file.' });
+    }
+
+    // Add files to sampleImages (marked as final)
+    const newFiles = files.map(f => ({
+      url: f.url,
+      filename: f.filename || f.name,
+      uploadedAt: new Date(),
+      type: 'final', // Mark as final delivery
+      comments: comments || ''
+    }));
+
+    order.sampleImages.push(...newFiles);
+    
+    // Update status directly to Completed
+    order.status = 'Completed';
+    // Also set customer approval to approved implicitly since we are skipping it
+    order.customerApprovalStatus = 'approved'; 
+    
+    if (comments) {
+      order.notes = (order.notes || '') + '\nCompletion Notes: ' + comments;
+    }
+
+    await order.save();
+
+    // Notify Customer
+    const io = req.app.get('io');
+    const notification = await Notification.create({
+      userId: order.customerId,
+      orderId: order._id,
+      type: 'order_completed',
+      title: `Order Completed`,
+      message: `Your order ${order.orderNumber} has been completed and files are available.`,
+    });
+    
+    io.to(`user-${order.customerId}`).emit('newNotification', notification);
+    io.to(`user-${order.customerId}`).emit('orderUpdate', order);
+
+    // Send Email (Status Update - Completed)
+    try {
+      const customer = await User.findById(order.customerId);
+      if (customer) {
+        await sendCustomerStatusUpdateEmail(customer, order, 'In Progress'); // Previous status assumption
+      }
+    } catch (emailError) {
+      console.error('⚠️ Failed to send completion email:', emailError);
+    }
+
+    res.json({ success: true, order });
+  } catch (error) {
+    console.error('❌ Failed to complete order:', error);
+    res.status(500).json({ success: false, message: 'Failed to complete order', error: error.message });
+  }
+});
 router.post('/:id/sample', protect, upload.single('file'), async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Only admin can upload sample' });

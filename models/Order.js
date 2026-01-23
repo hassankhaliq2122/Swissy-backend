@@ -218,7 +218,7 @@ const orderSchema = new mongoose.Schema(
         uploadedAt: { type: Date, default: Date.now },
         type: {
           type: String,
-          enum: ["initial", "revision"],
+          enum: ["initial", "revision", "final"],
           default: "initial",
         },
         comments: { type: String, default: "" }, // Admin comments
