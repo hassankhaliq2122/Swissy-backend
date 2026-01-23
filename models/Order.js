@@ -115,13 +115,7 @@ const orderSchema = new mongoose.Schema(
         return this.orderType === "patches";
       },
     },
-    patchAmount: {
-      type: Number,
-      min: 0,
-      required: function () {
-        return this.orderType === "patches";
-      },
-    },
+  
     patchUnit: {
       type: String,
       enum: ["inches", "centimeters", "millimeters"],

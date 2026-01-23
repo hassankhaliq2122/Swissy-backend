@@ -51,7 +51,7 @@ router.post('/', protect, upload.array('files', 5), async (req, res) => {
     const {
       orderType, designName, fileFormat, otherInstructions,
       PlacementofDesign, CustomMeasurements, length, width, unit, customSizes,
-      patchDesignName, patchStyle, patchAmount, patchUnit, patchLength, patchWidth,
+      patchDesignName, patchStyle, patchUnit, patchLength, patchWidth,
       patchBackingStyle, patchQuantity, patchAddress, notes
     } = body;
 
@@ -117,11 +117,11 @@ router.post('/', protect, upload.array('files', 5), async (req, res) => {
       orderData.items.push({ description: `${designName} - ${length}${unit} x ${width}${unit}`, quantity: 1, price: 20 + sizeFactor });
 
     } else if (orderType === 'patches') {
-      const requiredFields = ['patchDesignName', 'patchStyle', 'patchAmount', 'patchUnit', 'patchLength', 'patchWidth', 'patchBackingStyle', 'patchQuantity', 'patchAddress'];
+      const requiredFields = ['patchDesignName', 'patchStyle', 'patchUnit', 'patchLength', 'patchWidth', 'patchBackingStyle', 'patchQuantity', 'patchAddress'];
       const missing = requiredFields.filter(f => !body[f]);
       if (missing.length) return res.status(400).json({ success: false, message: `Missing patch fields: ${missing.join(', ')}` });
 
-      Object.assign(orderData, { patchDesignName, patchStyle, patchAmount, patchUnit, patchLength, patchWidth, patchBackingStyle, patchQuantity, patchAddress });
+      Object.assign(orderData, { patchDesignName, patchStyle, patchUnit, patchLength, patchWidth, patchBackingStyle, patchQuantity, patchAddress });
       const patchSizeFactor = (parseFloat(patchLength) || 0) * (parseFloat(patchWidth) || 0);
       orderData.items.push({ description: `${patchDesignName} (${patchStyle})`, quantity: parseInt(patchQuantity) || 1, price: 10 + patchSizeFactor });
     }
@@ -1098,7 +1098,7 @@ router.post('/:id/create-revision', protect, async (req, res) => {
 
       patchDesignName: parentOrder.patchDesignName,
       patchStyle: parentOrder.patchStyle,
-      patchAmount: parentOrder.patchAmount,
+      
       patchUnit: parentOrder.patchUnit,
       patchLength: parentOrder.patchLength,
       patchWidth: parentOrder.patchWidth,
