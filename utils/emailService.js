@@ -258,8 +258,12 @@ exports.generateInvoicePDF = async (invoice, customer) => {
   doc.rect(50, currentY, 495, 18).fill(black);
   doc.fillColor(yellowTheme).font("Helvetica-Bold").fontSize(9).text("IMPORTANT INSTRUCTIONS:", 65, currentY + 4);
   
+  // Dynamic Phone Number based on country
+  const isUS = customer.country && ["USA", "US", "United States", "America"].includes(customer.country);
+  const supportPhone = isUS ? "+1 8322 364 6002" : "+44 7782 294 364";
+
   doc.fillColor(black).font("Helvetica").fontSize(8)
-    .text("Once you have paid the invoice kindly email the proof of payment at accounts@swissembropatches.com OR whatsapp us at (+44 7782294364)", 50, currentY + 22, { width: 495 });
+    .text(`Once you have paid the invoice kindly email the proof of payment at accounts@swissembropatches.com OR whatsapp us at (${supportPhone})`, 50, currentY + 22, { width: 495 });
 
   if (invoice.notes) {
     doc.moveDown(0.5);
@@ -270,7 +274,17 @@ exports.generateInvoicePDF = async (invoice, customer) => {
   // Final Footer
   const pageHeight = doc.page.height;
   
-    doc.text("THANK YOU FOR CHOOSING SWISSEMBRO PATCHES!", 0, pageHeight - 50, { align: "center", width: doc.page.width });
+    // Draw footer background
+    doc.rect(0, pageHeight - 55, doc.page.width, 55).fill(black);
+    
+    // Write text centered
+    doc.fillColor(yellowTheme)
+       .fontSize(10)
+       .font("Helvetica-Bold")
+       .text("THANK YOU FOR CHOOSING SWISSEMBRO PATCHES!", 0, pageHeight - 55, { 
+         align: "center", 
+         width: doc.page.width 
+       });
   
  
 
