@@ -164,6 +164,7 @@ const orderSchema = new mongoose.Schema(
       },
     },
     trackingNumber: { type: String, default: "", trim: true },
+    adminPrice: { type: Number, default: 0 },
 
     /* ==========================================
      DIGITIZING FIELDS

@@ -10,11 +10,14 @@ const invoiceSchema = new mongoose.Schema(
     },
 
     // 🔹 Link to Order
-    orderId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Order",
-      required: true,
-    },
+    // 🔹 Link to Orders (Consolidated)
+    orders: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Order",
+        required: true,
+      },
+    ],
 
     // 🔹 Invoice Number (Auto-Generate)
     invoiceNumber: {

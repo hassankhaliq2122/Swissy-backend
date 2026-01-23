@@ -182,7 +182,7 @@ exports.generateInvoicePDF = async (invoice, customer) => {
     .fillColor(pureWhite)
     .fontSize(9)
     .font("Helvetica-Bold").text("Invoice #:", rightColumnX, detailsY_adj)
-    .font("Helvetica").text(invoice.orderId?.orderNumber || invoice.invoiceNumber, rightColumnX + 80, detailsY_adj, { align: "right", width: 115 })
+    .font("Helvetica").text(invoice.orders && invoice.orders.length > 0 ? invoice.orders.map(o => o.orderNumber).join(", ") : invoice.invoiceNumber, rightColumnX + 80, detailsY_adj, { align: "right", width: 115 })
     
     .font("Helvetica-Bold").text("Date:", rightColumnX, detailsY_adj + 15)
     .font("Helvetica").text(new Date().toLocaleDateString(), rightColumnX + 80, detailsY_adj + 15, { align: "right", width: 115 })
@@ -267,6 +267,13 @@ exports.generateInvoicePDF = async (invoice, customer) => {
     doc.font("Helvetica").text(invoice.notes, { width: 495 });
   }
 
+  // Final Footer
+  const pageHeight = doc.page.height;
+  
+    doc.text("THANK YOU FOR CHOOSING SWISSEMBRO PATCHES!", 0, pageHeight - 50, { align: "center", width: doc.page.width });
+  
+ 
+
   doc.end();
 
   return new Promise((resolve, reject) => {
@@ -284,18 +291,23 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
     return null;
   }
 
-  // Ensure orderId is populated to get orderNumber
-  if (invoice.populate && (!invoice.orderId || !invoice.orderId.orderNumber)) {
+  // Ensure orders are populated to get orderNumbers
+  if (invoice.populate && (!invoice.orders || invoice.orders.length === 0 || !invoice.orders[0].orderNumber)) {
     try {
-      await invoice.populate('orderId');
+      await invoice.populate('orders');
     } catch (err) {
-      console.warn("⚠️ Could not populate orderId in sendInvoiceEmail:", err.message);
+      console.warn("⚠️ Could not populate orders in sendInvoiceEmail:", err.message);
     }
   }
 
   const paymentLink = `${process.env.FRONTEND_URL || "https://swissembropatches.org"
     }/invoices/pay/${invoice._id}`;
   const pdfBuffer = await exports.generateInvoicePDF(invoice, customer);
+
+  // Get comma-separated order numbers
+  const orderNumbers = invoice.orders && invoice.orders.length > 0
+      ? invoice.orders.map(o => o.orderNumber).join(", ")
+      : invoice.invoiceNumber;
 
   // Helper
   const formatMoney = (amount) => {
@@ -305,7 +317,7 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
   const html = `
     <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
       <h2 style="color: #FFDD00; background: #000; padding: 15px; text-align: center;">
-        Invoice for Order: ${invoice.orderId?.orderNumber || invoice.invoiceNumber}
+        Invoice for Orders: ${orderNumbers}
       </h2>
       <div style="padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px;">
         <p>Hello <strong>${customer.name}</strong>,</p>

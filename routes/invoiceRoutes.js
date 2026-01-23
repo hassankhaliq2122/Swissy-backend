@@ -8,7 +8,7 @@ const { sendInvoiceEmail, generateInvoicePDF } = require("../utils/emailService"
 
 /* ===============================
    Role Authorization Middleware
-=============================== */
+================================ */
 const authorize = (roles = []) => {
   if (typeof roles === "string") roles = [roles];
   return (req, res, next) => {
@@ -25,14 +25,23 @@ const authorize = (roles = []) => {
 =============================== */
 router.get("/public/:id", async (req, res) => {
   try {
-    const invoice = await Invoice.findById(req.params.id).populate("orderId");
+    const invoice = await Invoice.findById(req.params.id).populate("orders");
     if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found" });
 
-    // Resolve design name based on order type
-    let designName = "Custom Order";
-    if (invoice.orderId) {
-      designName = invoice.orderId.patchDesignName || invoice.orderId.designName || "Custom Order";
+    // Resolve design name based on first order (or multiple)
+    // For consolidated invoice, we might show "Consolidated Order" or list them.
+    let designName = "Consolidated Order";
+    if (invoice.orders && invoice.orders.length > 0) {
+        if (invoice.orders.length === 1) {
+             const order = invoice.orders[0];
+             designName = order.patchDesignName || order.designName || "Custom Order";
+        } else {
+             designName = `${invoice.orders.length} Orders`;
+        }
     }
+
+    // Get order numbers
+    const orderNumbers = invoice.orders ? invoice.orders.map(o => o.orderNumber).join(", ") : "N/A";
 
     // Return only necessary details for payment
     res.json({
@@ -40,7 +49,7 @@ router.get("/public/:id", async (req, res) => {
       invoice: {
         _id: invoice._id,
         invoiceNumber: invoice.invoiceNumber,
-        orderNumber: invoice.orderId ? invoice.orderId.orderNumber : "N/A",
+        orderNumber: orderNumbers,
         designName: designName,
         total: invoice.total,
         currency: invoice.currency,
@@ -63,11 +72,10 @@ router.post("/public/pay/:invoiceId", async (req, res) => {
     const { invoiceId } = req.params;
     const { transactionId } = req.body;
 
-    const invoice = await Invoice.findById(invoiceId).populate("customerId orderId");
+    const invoice = await Invoice.findById(invoiceId).populate("customerId orders");
     if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found" });
 
     // 1. Verify with PayPal
-    // We ideally should move imports to top, but using require here ensures it works without extensive refactoring of imports at top
     const paypalClient = require('../paypalClient');
     const checkoutNodeJssdk = require('@paypal/checkout-server-sdk');
 
@@ -90,10 +98,12 @@ router.post("/public/pay/:invoiceId", async (req, res) => {
     };
     await invoice.save();
 
-    // Update linked order status
-    if (invoice.orderId) {
-      invoice.orderId.invoiceStatus = "paid";
-      await invoice.orderId.save();
+    // Update linked orders status to paid
+    if (invoice.orders && invoice.orders.length > 0) {
+        for (const ord of invoice.orders) {
+            ord.invoiceStatus = "paid";
+            await ord.save();
+        }
     }
 
     res.json({ success: true, message: "Payment successful and verified", invoice });
@@ -109,7 +119,7 @@ router.post("/public/pay/:invoiceId", async (req, res) => {
 router.get("/my", protect, authorize("customer"), async (req, res) => {
   try {
     const invoices = await Invoice.find({ customerId: req.user._id })
-      .populate("orderId")
+      .populate("orders")
       .sort({ createdAt: -1 });
 
     res.json({ success: true, count: invoices.length, invoices });
@@ -124,43 +134,63 @@ router.get("/my", protect, authorize("customer"), async (req, res) => {
 });
 
 /* ===============================
-   Admin creates invoice
+   Admin creates invoice (Consolidated)
 =============================== */
 router.post("/create", protect, authorize("admin"), async (req, res) => {
   try {
-    const { orderId, items, subtotal, tax, total, notes, dueDate, currency } = req.body;
+    const { orderIds, items, subtotal, tax, total, notes, dueDate, currency } = req.body;
 
-    // Fetch order
-    const order = await Order.findById(orderId);
-    if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+    if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
+        return res.status(400).json({ success: false, message: "No orders selected for invoice." });
+    }
+
+    // Fetch orders to validate same customer and calculate total if needed
+    const orders = await Order.find({ _id: { $in: orderIds } });
+    if (orders.length !== orderIds.length) {
+        return res.status(404).json({ success: false, message: "One or more orders not found." });
+    }
+
+    // Validate same customer
+    const firstCustomerId = orders[0].customerId.toString();
+    const allSameCustomer = orders.every(o => o.customerId.toString() === firstCustomerId);
+    if (!allSameCustomer) {
+        return res.status(400).json({ success: false, message: "All selected orders must belong to the same customer." });
+    }
 
     // Fetch customer
-    const customer = await User.findById(order.customerId);
+    const customer = await User.findById(firstCustomerId);
     if (!customer) return res.status(404).json({ success: false, message: "Customer not found" });
+
+    // Calculate sum of order totals (for reference)
+    const ordersTotalSum = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
 
     // Create invoice
     const invoice = await Invoice.create({
       customerId: customer._id,
-      orderId: order._id,
+      orders: orders.map(o => o._id), // Array of IDs
       items,
       subtotal,
       tax,
-      total,
+      total, // This is the invoice total (could be sum of orders or custom)
       notes,
       dueDate,
       currency: currency || "USD",
-      orderTotal: order.totalAmount || 0,
+      orderTotal: ordersTotalSum,
       generatedByAdmin: true,
     });
 
-    // Update order with invoice info
-    order.invoiceId = invoice._id;
-    order.hasInvoice = true;
-    order.invoiceStatus = "pending";
-    await order.save();
+    // Update all orders with invoice info
+    for (const order of orders) {
+        order.invoiceId = invoice._id;
+        order.hasInvoice = true;
+        order.invoiceStatus = "pending";
+        await order.save();
+    }
 
-    // Send invoice email with PDF and payment link (optional - won't fail if email not configured)
+    // Send invoice email (populate orders first)
     try {
+      // Need to populate orders for the email template if it relies on them
+      await invoice.populate('orders'); 
       await sendInvoiceEmail(customer, invoice);
       console.log('✅ Invoice email sent successfully');
     } catch (emailError) {
@@ -177,20 +207,15 @@ router.post("/create", protect, authorize("admin"), async (req, res) => {
 /* ===============================
    PayPal / Online Payment Callback
 =============================== */
-/* ===============================
-   PayPal / Online Payment Callback
-=============================== */
 router.post("/pay/:invoiceId", protect, authorize("customer"), async (req, res) => {
   try {
     const { invoiceId } = req.params;
-    const { transactionId } = req.body; // Client only sends ID now
+    const { transactionId } = req.body; 
 
-    const invoice = await Invoice.findById(invoiceId).populate("customerId orderId");
+    const invoice = await Invoice.findById(invoiceId).populate("customerId orders");
     if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found" });
 
      // 1. Verify with PayPal
-    // We need to import these at the top, but for minimal disruption we require them here or assume global.
-    // Ideally, add imports at the top. Let's assume we'll fix imports in a separate tool call if needed or just use require here.
     const paypalClient = require('../paypalClient');
     const checkoutNodeJssdk = require('@paypal/checkout-server-sdk');
 
@@ -201,9 +226,6 @@ router.post("/pay/:invoiceId", protect, authorize("customer"), async (req, res) 
     if (order.result.status !== 'COMPLETED') {
         return res.status(400).json({ success: false, message: "Payment not completed" });
     }
-
-    // 3. Verify Amount (Optional but recommended: check order.result.purchase_units[0].amount.value == invoice.total)
-    // For now, we trust the successful capture implies correct amount if the order was created correctly.
 
     // Mark as paid
     invoice.paymentStatus = "paid";
@@ -216,10 +238,12 @@ router.post("/pay/:invoiceId", protect, authorize("customer"), async (req, res) 
     };
     await invoice.save();
 
-    // Update linked order status
-    if (invoice.orderId) {
-      invoice.orderId.invoiceStatus = "paid";
-      await invoice.orderId.save();
+    // Update linked orders status
+    if (invoice.orders && invoice.orders.length > 0) {
+        for (const ord of invoice.orders) {
+            ord.invoiceStatus = "paid";
+            await ord.save();
+        }
     }
 
     res.json({ success: true, message: "Payment successful and verified", invoice });
@@ -242,7 +266,7 @@ router.get("/all", protect, authorize("admin"), async (req, res) => {
     if (startDate && endDate) query.createdAt = { $gte: new Date(startDate), $lte: new Date(endDate) };
 
     const invoices = await Invoice.find(query)
-      .populate("customerId orderId")
+      .populate("customerId orders")
       .sort({ createdAt: -1 });
 
     res.json({ success: true, count: invoices.length, invoices });
@@ -251,6 +275,7 @@ router.get("/all", protect, authorize("admin"), async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to fetch invoices", error: err.message });
   }
 });
+
 /* ===============================
    Admin sends invoice to customer (manual resend)
 =============================== */
@@ -259,7 +284,7 @@ router.post("/send/:invoiceId", protect, authorize("admin"), async (req, res) =>
     const { invoiceId } = req.params;
 
     // Fetch invoice
-    const invoice = await Invoice.findById(invoiceId).populate("customerId");
+    const invoice = await Invoice.findById(invoiceId).populate("customerId orders");
     if (!invoice) {
       return res.status(404).json({ success: false, message: "Invoice not found" });
     }
@@ -296,19 +321,27 @@ router.post("/send/:invoiceId", protect, authorize("admin"), async (req, res) =>
 =============================== */
 router.post("/preview", protect, authorize("admin"), async (req, res) => {
   try {
-    const { orderId, items, currency, notes } = req.body;
+    // orderIds array instead of single orderId
+    const { orderIds, items, currency, notes } = req.body;
 
-    const order = await Order.findById(orderId).populate("customerId");
-    if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+    let orderNumbers = "PREVIEW";
+    let customer = null;
 
-    const customer = order.customerId;
-    if (!customer) return res.status(404).json({ success: false, message: "Customer not found" });
+    if (orderIds && orderIds.length > 0) {
+        const orders = await Order.find({ _id: { $in: orderIds } }).populate("customerId");
+        if (orders.length > 0) {
+            customer = orders[0].customerId;
+            orderNumbers = orders.map(o => o.orderNumber).join(", ");
+        }
+    }
+
+    if (!customer) return res.status(404).json({ success: false, message: "Customer not found for selected orders" });
 
     // Mock invoice object for PDF generation
     const mockInvoice = {
-      orderId: {
-        orderNumber: order.orderNumber
-      },
+      // Mock orders array with just orderNumber for PDF
+      orders: orderIds.map((_, i) => ({ orderNumber: orderNumbers.split(", ")[i] || "N/A" })),
+      // Also keep orderId.orderNumber compatible if needed, but better to update PDF generator
       invoiceNumber: `PREVIEW-${Date.now()}`,
       items,
       currency: currency || "USD",
