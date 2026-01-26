@@ -20,7 +20,7 @@ const uploadToCloudinary = async (filePath, folder = 'orders') => {
         const result = await cloudinary.uploader.upload(filePath, {
             folder: `swiss-project/${folder}`,
             resource_type: 'auto', // Handles images, PDFs, and other files
-            allowed_formats: ['jpg', 'jpeg', 'png', 'pdf', 'ai', 'eps', 'cdr', 'svg', 'webp', 'dst','dgt', 'emb'],
+            allowed_formats: ['jpg', 'jpeg', 'png', 'pdf', 'ai', 'eps', 'cdr', 'svg', 'webp', 'dst', 'emb'],
         });
 
         console.log(`✅ Upload successful: ${result.secure_url}`);

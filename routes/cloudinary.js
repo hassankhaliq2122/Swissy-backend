@@ -18,7 +18,7 @@ const upload = multer({
         const imageMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/svg+xml'];
 
         // Design files (check by extension since MIME types vary)
-        const designExtensions = ['ai', 'eps', 'cdr', 'pdf', 'dst','dgt', 'emb'];
+        const designExtensions = ['ai', 'eps', 'cdr', 'pdf', 'dst', 'emb'];
 
         const isImage = imageMimeTypes.includes(file.mimetype);
         const isDesignFile = designExtensions.includes(ext);
@@ -26,7 +26,7 @@ const upload = multer({
         if (isImage || isDesignFile) {
             return cb(null, true);
         } else {
-            cb(new Error('Invalid file type. Only images and design files (.ai, .eps, .cdr, .pdf, .svg, .dst,.dgt,.pes, .emb) allowed.'));
+            cb(new Error('Invalid file type. Only images and design files (.ai, .eps, .cdr, .pdf, .svg, .dst, .emb) allowed.'));
         }
     }
 });
