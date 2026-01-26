@@ -115,13 +115,7 @@ const orderSchema = new mongoose.Schema(
         return this.orderType === "patches";
       },
     },
-    patchAmount: {
-      type: Number,
-      min: 0,
-      required: function () {
-        return this.orderType === "patches";
-      },
-    },
+  
     patchUnit: {
       type: String,
       enum: ["inches", "centimeters", "millimeters"],
@@ -164,6 +158,7 @@ const orderSchema = new mongoose.Schema(
       },
     },
     trackingNumber: { type: String, default: "", trim: true },
+    adminPrice: { type: Number, default: 0 },
 
     /* ==========================================
      DIGITIZING FIELDS
@@ -223,7 +218,7 @@ const orderSchema = new mongoose.Schema(
         uploadedAt: { type: Date, default: Date.now },
         type: {
           type: String,
-          enum: ["initial", "revision"],
+          enum: ["initial", "revision", "final"],
           default: "initial",
         },
         comments: { type: String, default: "" }, // Admin comments

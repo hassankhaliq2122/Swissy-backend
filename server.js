@@ -16,11 +16,18 @@ if (!process.env.JWT_SECRET) {
   process.env.JWT_SECRET = "swiss_project_dev_secret_123";
 }
 
+console.log("🔑 JWT Configuration:");
+console.log(`   - Secret: ${process.env.JWT_SECRET ? "Set ✅" : "Missing ❌"}`);
+console.log(`   - Expire: ${process.env.JWT_EXPIRE || "Default (7d)"}`);
+console.log(`   - Time: ${new Date().toISOString()}`);
+
 // ============================
 // 🚀 App & HTTP Server
 // ============================
 const app = express();
 const server = http.createServer(app);
+const helmet = require("helmet");
+app.use(helmet());
 
 // ============================
 // 🌐 CORS Configuration
@@ -104,6 +111,7 @@ try {
   app.use("/api/upload", require("./routes/upload"));
   app.use("/api/activity", require("./routes/activity"));
   app.use("/api/cloudinary", require("./routes/cloudinary"));
+  app.use("/api/webhooks", require("./routes/webhookRoutes")); // 🔔 Webhooks
 } catch (err) {
   console.log("error", err);
   console.error("❌ Error loading routes:", err.message);

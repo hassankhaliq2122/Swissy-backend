@@ -19,81 +19,81 @@ const generateToken = (id) => {
 
 /**
  * ==========================
- * Google Login
+ * Google Login (DISABLED)
  * POST /api/auth/google
  * ==========================
  */
-router.post("/google", async (req, res) => {
-  try {
-    const { token } = req.body;
+// router.post("/google", async (req, res) => {
+//   try {
+//     const { token } = req.body;
 
-    if (!token) {
-      return res.status(400).json({
-        success: false,
-        message: "Google token missing",
-      });
-    }
+//     if (!token) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Google token missing",
+//       });
+//     }
 
-    // Verify token with Google
-    const ticket = await googleClient.verifyIdToken({
-      idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
+//     // Verify token with Google
+//     const ticket = await googleClient.verifyIdToken({
+//       idToken: token,
+//       audience: process.env.GOOGLE_CLIENT_ID,
+//     });
 
-    const payload = ticket.getPayload();
+//     const payload = ticket.getPayload();
 
-    const googleEmail = payload.email?.toLowerCase().trim();
-    const googleName = payload.name?.trim();
-    const googlePicture = payload.picture;
+//     const googleEmail = payload.email?.toLowerCase().trim();
+//     const googleName = payload.name?.trim();
+//     const googlePicture = payload.picture;
 
-    if (!googleEmail) {
-      return res.status(400).json({
-        success: false,
-        message: "Unable to get Google email",
-      });
-    }
+//     if (!googleEmail) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Unable to get Google email",
+//       });
+//     }
 
-    // Find existing user
-    let user = await User.findOne({ email: googleEmail });
+//     // Find existing user
+//     let user = await User.findOne({ email: googleEmail });
 
-    // If user doesn't exist → create account
-    if (!user) {
-      user = await User.create({
-        name: googleName,
-        username: googleEmail.split("@")[0], // auto username
-        email: googleEmail,
-        password: null, // No password for Google accounts
-        role: "customer",
-        isVerified: true,
-        authProvider: "google",
-        googleAvatar: googlePicture,
-      });
-    }
+//     // If user doesn't exist → create account
+//     if (!user) {
+//       user = await User.create({
+//         name: googleName,
+//         username: googleEmail.split("@")[0], // auto username
+//         email: googleEmail,
+//         password: null, // No password for Google accounts
+//         role: "customer",
+//         isVerified: true,
+//         authProvider: "google",
+//         googleAvatar: googlePicture,
+//       });
+//     }
 
-    // Generate JWT
-    const jwtToken = generateToken(user._id);
+//     // Generate JWT
+//     const jwtToken = generateToken(user._id);
 
-    return res.json({
-      success: true,
-      message: "Google login successful",
-      token: jwtToken,
-      user: {
-        _id: user._id,
-        name: user.name,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-        googleAvatar: user.googleAvatar || null,
-      },
-    });
-  } catch (error) {
-    console.error("❌ Google Login Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Google login failed",
-    });
-  }
-});
+//     return res.json({
+//       success: true,
+//       message: "Google login successful",
+//       token: jwtToken,
+//       user: {
+//         _id: user._id,
+//         name: user.name,
+//         username: user.username,
+//         email: user.email,
+//         role: user.role,
+//         googleAvatar: user.googleAvatar || null,
+//       },
+//     });
+//   } catch (error) {
+//     console.error("❌ Google Login Error:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Google login failed",
+//     });
+//   }
+// });
 
 /**
  * ==========================
@@ -234,14 +234,16 @@ router.post("/login", async (req, res) => {
         .status(404)
         .json({ success: false, message: "User not found" });
 
-    if (user.authProvider === "local") {
-      if (!user.password) throw new Error("Password not set for local user");
-      const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch)
-        return res
-          .status(401)
-          .json({ success: false, message: "Invalid credentials" });
+    // Verify password
+    console.log(`🔍 Login Attempt: ${user.email} (${user.role})`);
+    const isMatch = await bcrypt.compare(password, user.password);
+    console.log(`   - Password Match Result: ${isMatch}`);
+
+    if (!isMatch) {
+      console.log("   - ❌ Blocking login: Invalid credentials");
+      return res.status(401).json({ success: false, message: "Invalid credentials" });
     }
+    console.log("   - ✅ Allowing login");
 
     // Allow all roles to login (admin, employee, customer)
     if (!["admin", "employee", "customer"].includes(user.role)) {
@@ -251,7 +253,7 @@ router.post("/login", async (req, res) => {
     const token = jwt.sign(
       { id: user._id, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: process.env.JWT_EXPIRE || "7d" }
     );
 
     res.status(200).json({

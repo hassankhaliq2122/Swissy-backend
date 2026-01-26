@@ -10,11 +10,14 @@ const invoiceSchema = new mongoose.Schema(
     },
 
     // 🔹 Link to Order
-    orderId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Order",
-      required: true,
-    },
+    // 🔹 Link to Orders (Consolidated)
+    orders: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Order",
+        required: true,
+      },
+    ],
 
     // 🔹 Invoice Number (Auto-Generate)
     invoiceNumber: {
@@ -28,6 +31,12 @@ const invoiceSchema = new mongoose.Schema(
       },
     },
 
+    // 🔹 Currency (New)
+    currency: {
+      type: String,
+      default: "USD",
+    },
+
     // 🔹 Items (copied from order)
     items: [
       {
@@ -39,7 +48,7 @@ const invoiceSchema = new mongoose.Schema(
 
     // 🔹 Amount Breakdown
     subtotal: { type: Number, required: true, min: 0, default: 0 },
-
+    // Tax removed
     total: { type: Number, required: true, min: 0, default: 0 },
 
     // 🔹 Payment Status

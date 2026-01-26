@@ -51,7 +51,7 @@ router.post('/', protect, upload.array('files', 5), async (req, res) => {
     const {
       orderType, designName, fileFormat, otherInstructions,
       PlacementofDesign, CustomMeasurements, length, width, unit, customSizes,
-      patchDesignName, patchStyle, patchAmount, patchUnit, patchLength, patchWidth,
+      patchDesignName, patchStyle, patchUnit, patchLength, patchWidth,
       patchBackingStyle, patchQuantity, patchAddress, notes
     } = body;
 
@@ -117,11 +117,11 @@ router.post('/', protect, upload.array('files', 5), async (req, res) => {
       orderData.items.push({ description: `${designName} - ${length}${unit} x ${width}${unit}`, quantity: 1, price: 20 + sizeFactor });
 
     } else if (orderType === 'patches') {
-      const requiredFields = ['patchDesignName', 'patchStyle', 'patchAmount', 'patchUnit', 'patchLength', 'patchWidth', 'patchBackingStyle', 'patchQuantity', 'patchAddress'];
+      const requiredFields = ['patchDesignName', 'patchStyle', 'patchUnit', 'patchLength', 'patchWidth', 'patchBackingStyle', 'patchQuantity', 'patchAddress'];
       const missing = requiredFields.filter(f => !body[f]);
       if (missing.length) return res.status(400).json({ success: false, message: `Missing patch fields: ${missing.join(', ')}` });
 
-      Object.assign(orderData, { patchDesignName, patchStyle, patchAmount, patchUnit, patchLength, patchWidth, patchBackingStyle, patchQuantity, patchAddress });
+      Object.assign(orderData, { patchDesignName, patchStyle, patchUnit, patchLength, patchWidth, patchBackingStyle, patchQuantity, patchAddress });
       const patchSizeFactor = (parseFloat(patchLength) || 0) * (parseFloat(patchWidth) || 0);
       orderData.items.push({ description: `${patchDesignName} (${patchStyle})`, quantity: parseInt(patchQuantity) || 1, price: 10 + patchSizeFactor });
     }
@@ -727,7 +727,7 @@ router.put('/:id', protect, async (req, res) => {
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
     if (req.user.role === 'admin' || (req.user.role === 'employee' && order.assignedTo?.toString() === req.user._id.toString())) {
-      const { status, rejectedReason, report, trackingNumber } = req.body;
+      const { status, rejectedReason, report, trackingNumber, adminPrice } = req.body;
       const previousStatus = order.status; // Capture previous status for email
       const previousTrackingNumber = order.trackingNumber; // Capture previous tracking number
 
@@ -735,6 +735,7 @@ router.put('/:id', protect, async (req, res) => {
       if (rejectedReason) order.rejectedReason = rejectedReason;
       if (report) order.report = report; // employee report field
       if (trackingNumber !== undefined) order.trackingNumber = trackingNumber; // admin can set tracking number
+      if (adminPrice !== undefined) order.adminPrice = adminPrice; // admin can set price
       await order.save();
 
       // Notify Customer of status change (only if status actually changed)
@@ -810,6 +811,62 @@ router.put('/:id', protect, async (req, res) => {
 });
 
 /* ================================
+   SEND EMAIL TO CUSTOMER (Admin)
+=============================== */
+const { sendCustomOrderEmail } = require('../utils/emailService');
+
+router.post('/:id/email', protect, upload.array('files', 10), async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Only admin can send emails' });
+    }
+
+    const order = await Order.findById(req.params.id).populate('customerId', 'email name');
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    if (!order.customerId?.email) {
+      return res.status(400).json({ success: false, message: 'Customer has no email address' });
+    }
+
+    // Process attachments
+    const attachments = (req.files || []).map(file => ({
+      filename: file.originalname,
+      content: fs.readFileSync(file.path),
+      contentType: file.mimetype
+    }));
+
+    await sendCustomOrderEmail(
+      order.customerId.email,
+      order.orderNumber,
+      req.body.message,
+      attachments
+    );
+
+    // Cleanup temp files
+    if (req.files) {
+      req.files.forEach(f => {
+        try { fs.unlinkSync(f.path); } catch (e) { console.error('Failed to cleanup file:', f.path); }
+      });
+    }
+
+    res.json({ success: true, message: 'Email sent successfully' });
+
+  } catch (error) {
+    console.error('❌ Failed to send email:', error);
+    // Cleanup on error
+    if (req.files) {
+      req.files.forEach(f => {
+        try { fs.unlinkSync(f.path); } catch (e) { /* ignore */ }
+      });
+    }
+    res.status(500).json({ success: false, message: 'Failed to send email', error: error.message });
+  }
+});
+
+
+/* ================================
    DELETE ORDER
 ================================ */
 router.delete('/:id', protect, async (req, res) => {
@@ -845,8 +902,72 @@ router.delete('/:id', protect, async (req, res) => {
   }
 });
 /* ================================
-   UPLOAD SAMPLE IMAGE (Admin → Customer)
+   COMPLETE ORDER WITH FILES (Admin → Direct Complete)
 ================================ */
+router.post('/:id/complete-order', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Only admin can complete orders' });
+
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+
+    const { files, comments } = req.body; // Expecting Cloudinary file objects
+
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ success: false, message: 'Please upload at least one file.' });
+    }
+
+    // Add files to sampleImages (marked as final)
+    const newFiles = files.map(f => ({
+      url: f.url,
+      filename: f.filename || f.name,
+      uploadedAt: new Date(),
+      type: 'final', // Mark as final delivery
+      comments: comments || ''
+    }));
+
+    order.sampleImages.push(...newFiles);
+    
+    // Update status directly to Completed
+    order.status = 'Completed';
+    // Also set customer approval to approved implicitly since we are skipping it
+    order.customerApprovalStatus = 'approved'; 
+    
+    if (comments) {
+      order.notes = (order.notes || '') + '\nCompletion Notes: ' + comments;
+    }
+
+    await order.save();
+
+    // Notify Customer
+    const io = req.app.get('io');
+    const notification = await Notification.create({
+      userId: order.customerId,
+      orderId: order._id,
+      type: 'order_completed',
+      title: `Order Completed`,
+      message: `Your order ${order.orderNumber} has been completed and files are available.`,
+    });
+    
+    io.to(`user-${order.customerId}`).emit('newNotification', notification);
+    io.to(`user-${order.customerId}`).emit('orderUpdate', order);
+
+    // Send Email (Status Update - Completed)
+    try {
+      const customer = await User.findById(order.customerId);
+      if (customer) {
+        await sendCustomerStatusUpdateEmail(customer, order, 'In Progress'); // Previous status assumption
+      }
+    } catch (emailError) {
+      console.error('⚠️ Failed to send completion email:', emailError);
+    }
+
+    res.json({ success: true, order });
+  } catch (error) {
+    console.error('❌ Failed to complete order:', error);
+    res.status(500).json({ success: false, message: 'Failed to complete order', error: error.message });
+  }
+});
 router.post('/:id/sample', protect, upload.single('file'), async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Only admin can upload sample' });
@@ -1041,7 +1162,7 @@ router.post('/:id/create-revision', protect, async (req, res) => {
 
       patchDesignName: parentOrder.patchDesignName,
       patchStyle: parentOrder.patchStyle,
-      patchAmount: parentOrder.patchAmount,
+      
       patchUnit: parentOrder.patchUnit,
       patchLength: parentOrder.patchLength,
       patchWidth: parentOrder.patchWidth,
