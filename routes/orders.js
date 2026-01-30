@@ -727,7 +727,7 @@ router.put('/:id', protect, async (req, res) => {
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
     if (req.user.role === 'admin' || (req.user.role === 'employee' && order.assignedTo?.toString() === req.user._id.toString())) {
-      const { status, rejectedReason, report, trackingNumber, adminPrice } = req.body;
+      const { status, rejectedReason, report, trackingNumber, adminPrice, invoiceStatus } = req.body;
       const previousStatus = order.status; // Capture previous status for email
       const previousTrackingNumber = order.trackingNumber; // Capture previous tracking number
 
@@ -736,6 +736,7 @@ router.put('/:id', protect, async (req, res) => {
       if (report) order.report = report; // employee report field
       if (trackingNumber !== undefined) order.trackingNumber = trackingNumber; // admin can set tracking number
       if (adminPrice !== undefined) order.adminPrice = adminPrice; // admin can set price
+      if (invoiceStatus !== undefined) order.invoiceStatus = invoiceStatus; // admin can set payment status
       await order.save();
 
       // Notify Customer of status change (only if status actually changed)
