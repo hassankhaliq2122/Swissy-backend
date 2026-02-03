@@ -831,6 +831,9 @@ router.post('/:id/email', protect, upload.array('files', 10), async (req, res) =
       return res.status(400).json({ success: false, message: 'Customer has no email address' });
     }
 
+    // Extract CC email from request body
+    const ccEmail = req.body.ccEmail || null;
+
     // Process attachments
     const attachments = (req.files || []).map(file => ({
       filename: file.originalname,
@@ -842,7 +845,8 @@ router.post('/:id/email', protect, upload.array('files', 10), async (req, res) =
       order.customerId.email,
       order.orderNumber,
       req.body.message,
-      attachments
+      attachments,
+      ccEmail
     );
 
     // Cleanup temp files
@@ -852,7 +856,7 @@ router.post('/:id/email', protect, upload.array('files', 10), async (req, res) =
       });
     }
 
-    res.json({ success: true, message: 'Email sent successfully' });
+    res.json({ success: true, message: `Email sent successfully${ccEmail ? ` (CC: ${ccEmail})` : ''}` });
 
   } catch (error) {
     console.error('❌ Failed to send email:', error);

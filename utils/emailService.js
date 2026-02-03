@@ -18,7 +18,7 @@ if (process.env.RESEND_API_KEY) {
 /* ===============================
    GENERAL EMAIL FUNCTION
 =============================== */
-exports.sendEmail = async ({ email, subject, html, attachments, bcc }) => {
+exports.sendEmail = async ({ email, subject, html, attachments, bcc, cc }) => {
   if (!resend) {
     console.warn("⚠️ Email service not configured. Skipping sendEmail.");
     return null;
@@ -38,6 +38,10 @@ exports.sendEmail = async ({ email, subject, html, attachments, bcc }) => {
       emailOptions.bcc = bcc;
     }
 
+    if (cc) {
+      emailOptions.cc = cc;
+    }
+
     if (attachments && attachments.length > 0) {
       emailOptions.attachments = attachments.map((att) => ({
         filename: att.filename,
@@ -52,7 +56,7 @@ exports.sendEmail = async ({ email, subject, html, attachments, bcc }) => {
       return null;
     }
 
-    console.log(`✅ Email sent to ${email}: ${data.id}`);
+    console.log(`✅ Email sent to ${email}${cc ? `, CC: ${cc}` : ''}: ${data.id}`);
     return data;
   } catch (error) {
     console.error(`❌ Failed to send email to ${email}:`, error);
@@ -619,7 +623,7 @@ exports.sendBulkOrderAssignmentEmail = async (
 /* ===============================
    CUSTOM ORDER EMAIL (Admin to Customer)
 =============================== */
-exports.sendCustomOrderEmail = async (customerEmail, orderNumber, message, attachments = []) => {
+exports.sendCustomOrderEmail = async (customerEmail, orderNumber, message, attachments = [], ccEmail = null) => {
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #fff;">
       <div style="background: #000; padding: 20px; text-align: center;">
@@ -655,7 +659,8 @@ exports.sendCustomOrderEmail = async (customerEmail, orderNumber, message, attac
     email: customerEmail,
     subject: `Update for Order #${orderNumber}`,
     html,
-    attachments
+    attachments,
+    cc: ccEmail
   });
 };
 
