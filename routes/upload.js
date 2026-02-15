@@ -25,18 +25,19 @@ const storage = multer.diskStorage({
 
 // File filter
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png|gif|svg|pdf|ai|eps/;
+  const allowedTypes = /jpeg|jpg|png|gif|svg|pdf|ai|eps|pes/;
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
   const mimetype = allowedTypes.test(file.mimetype) || 
                    file.mimetype === 'image/svg+xml' ||
                    file.mimetype === 'application/pdf' ||
                    file.mimetype === 'application/postscript' ||
-                   file.mimetype === 'application/illustrator';
+                   file.mimetype === 'application/illustrator' ||
+                   file.mimetype === 'application/octet-stream';
 
   if (extname && mimetype) {
     return cb(null, true);
   } else {
-    cb(new Error('Only image files (PNG, SVG, JPEG, AI, EPS, PDF) are allowed'));
+    cb(new Error('Only image files (PNG, SVG, JPEG, AI, EPS, PDF, PES) are allowed'));
   }
 };
 
