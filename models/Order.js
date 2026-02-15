@@ -110,6 +110,8 @@ const orderSchema = new mongoose.Schema(
         "Chenille Patches",
         "Keychains",
         "TPU Patches",
+        "Woven Labels",
+        "Printed Labels",
       ],
       required: function () {
         return this.orderType === "patches";
