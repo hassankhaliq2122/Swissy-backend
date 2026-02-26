@@ -150,185 +150,73 @@ exports.generateInvoicePDF = async (invoice, customer) => {
   };
 
   // Header Section
-  // Full-width black header
-  doc.rect(0, 0, doc.page.width, 120).fill(black);
+  doc.rect(0, 0, doc.page.width, 100).fill(black);
 
-  const headerY = 25;
+  const headerY = 35;
   const isConsolidated = invoice.orders && invoice.orders.length > 1;
-  let billToY = 140;
 
-  // Constants for Dynamic Phone Number
-  const isUS = customer.country && ["USA", "US", "United States", "America"].includes(customer.country);
-  const supportPhone = isUS ? "+1 8322 364 6002" : "+44 7782 294 364";
+  // Header Text
+  doc
+    .fillColor(yellowTheme)
+    .font("Helvetica-Bold")
+    .fontSize(24)
+    .text("Swiss Embro Patches", 50, headerY)
+    .fontSize(36)
+    .text("INVOICE", 50, headerY - 5, { align: "right" });
 
-  if (!isConsolidated) {
-    /* =========================================================
-       SINGLE ORDER LAYOUT (Original)
-       Company Info: Left
-       Bill To: Left (below)
-       Invoice Details: Right
-       ========================================================= */
+  const startY = 120;
+  const leftColX = 50;
+  const rightColX = 350;
 
-    // Large INVOICE on the right
-    doc
-        .fillColor(yellowTheme)
-        .font("Helvetica-Bold")
-        .fontSize(40)
-        .text("INVOICE", 50, headerY, { align: "right" });
+  // --- BILL TO / SERVICE PROVIDER ---
+  doc
+    .fillColor(black)
+    .font("Helvetica-Bold")
+    .fontSize(14)
+    .text("Bill To:", leftColX, startY)
+    .text("Service Provider:", rightColX, startY);
 
-    // Company Name/Logo in Header (Left)
-    if (fs.existsSync(logoPath)) {
-        doc.image(logoPath, 50, headerY - 5, { width: 130 });
-    } else {
-        doc.fillColor(yellowTheme).font("Helvetica-Bold").fontSize(26).text("Swissembro Patches", 50, headerY);
-    }
+  doc
+    .font("Helvetica")
+    .fontSize(11)
+    .text(customer.name || "N/A", leftColX, startY + 20)
+    .text(customer.email || "N/A", leftColX, startY + 35);
 
-    // Company Info in Header (Left)
-    const companyInfoY = headerY + 40;
-    doc
-        .fontSize(10)
-        .font("Helvetica")
-        .fillColor(yellowTheme)
-        .text("www.swissembropatches.org", 50, companyInfoY)
-        .text("accounts@swissembropatches.com", 50, companyInfoY + 15);
-
-    // Invoice Details below INVOICE title (Right)
-    const detailsY_adj = headerY + 50;
-    const rightColumnX = 350;
-
-    doc
-        .fillColor(pureWhite)
-        .fontSize(9)
-        .font("Helvetica-Bold").text("Invoice #:", rightColumnX, detailsY_adj)
-        .font("Helvetica").text(invoice.orders && invoice.orders.length > 0 ? invoice.orders.map(o => o.orderNumber).join(", ") : invoice.invoiceNumber, rightColumnX + 80, detailsY_adj, { align: "right", width: 115 })
-
-        .font("Helvetica-Bold").text("Date:", rightColumnX, detailsY_adj + 15)
-        .font("Helvetica").text(new Date().toLocaleDateString(), rightColumnX + 80, detailsY_adj + 15, { align: "right", width: 115 })
-
-        .font("Helvetica-Bold").text("Due date:", rightColumnX, detailsY_adj + 30)
-        .font("Helvetica").text(invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : "Upon Receipt", rightColumnX + 80, detailsY_adj + 30, { align: "right", width: 115 })
-
-        .font("Helvetica-Bold").text("Currency:", rightColumnX, detailsY_adj + 45)
-        .font("Helvetica").text(`${invoice.currency || "USD"}`, rightColumnX + 80, detailsY_adj + 45, { align: "right", width: 115 });
-
-    // Bill To section (Left) (billToY is 140)
-    doc
-        .fillColor(black)
-        .font("Helvetica-Bold")
-        .fontSize(11)
-        .text("Bill to:", 50, billToY)
-        .font("Helvetica")
-        .fontSize(10)
-        .text(customer.name, 50, billToY + 13)
-        .text(customer.email, 50, billToY + 25);
-
+  // Service Provider Details
+  let logoY = startY + 15;
+  if (fs.existsSync(logoPath)) {
+    doc.image(logoPath, rightColX, logoY, { width: 150 });
+    logoY += 45;
   } else {
-    /* =========================================================
-       CONSOLIDATED ORDER LAYOUT (New)
-       Bill To: Left
-       Service Provider (with Logo): Right
-       Invoice Details: Right (below Service Provider)
-       ========================================================= */
-
-    // Large INVOICE Title
-    doc
-        .fillColor(yellowTheme)
-        .font("Helvetica-Bold")
-        .fontSize(40)
-        .text("INVOICE", 50, headerY, { align: "right" });
-
-    // Header Bar Text (Minimal)
-    doc.fillColor(yellowTheme).font("Helvetica-Bold").fontSize(26).text("Swissembro Patches", 50, headerY);
-
-
-    // --- BELOW HEADER ---
-    // using shared billToY = 140
-    
-    // LEFT SIDE: BILL TO
-    doc
-        .fillColor(black)
-        .font("Helvetica-Bold")
-        .fontSize(14) 
-        .text("Bill To:", 50, billToY);
-    
-    doc
-        .font("Helvetica")
-        .fontSize(11) 
-        .text(customer.name, 50, billToY + 20)
-        .text(customer.email, 50, billToY + 35);
-
-
-    // RIGHT SIDE: SERVICE PROVIDER
-    const rightSideX = 350;
-    doc
-        .font("Helvetica-Bold")
-        .fontSize(14)
-        .text("Service Provider:", rightSideX, billToY);
-    
-    // Logo on Right
-    let logoY = billToY + 20;
-    if (fs.existsSync(logoPath)) {
-        doc.image(logoPath, rightSideX, logoY, { width: 100 });
-        logoY += 40; 
-    } else {
-        doc
-            .font("Helvetica-Bold")
-            .fontSize(12)
-            .text("Swissembro Patches", rightSideX, logoY);
-        logoY += 15;
-    }
-
-    doc
-        .font("Helvetica")
-        .fontSize(10)
-        .text("www.swissembropatches.org", rightSideX, logoY)
-        .text("accounts@swissembropatches.com", rightSideX, logoY + 15)
-        .text(`Tel: ${supportPhone}`, rightSideX, logoY + 30);
-
-
-    // INVOICE DETAILS
-    const detailsY = logoY + 55;
-    
-    // Get order numbers string
-    const orderNumbersStr = invoice.orders && invoice.orders.length > 0 
-        ? invoice.orders.map(o => o.orderNumber).join(", ") 
-        : invoice.invoiceNumber;
-    
-    doc
-        .font("Helvetica-Bold").text("Invoice #:", rightSideX, detailsY);
-    
-    // Display order numbers on the next line to prevent overlap
-    doc
-        .font("Helvetica").text(orderNumbersStr, rightSideX, detailsY + 12, { width: 195 });
-    
-    // Calculate height needed for order numbers (approx 12 per line at font size 10)
-    const orderNumberLines = Math.ceil(orderNumbersStr.length / 30);
-    const orderNumberHeight = Math.max(12, orderNumberLines * 12);
-    
-    const dateY = detailsY + 12 + orderNumberHeight + 5;
-    
-    doc
-        .font("Helvetica-Bold").text("Date:", rightSideX, dateY)
-        .font("Helvetica").text(new Date().toLocaleDateString(), rightSideX + 60, dateY)
-        
-        .font("Helvetica-Bold").text("Total Due:", rightSideX, dateY + 15)
-        .font("Helvetica").text(`${formatMoney(invoice.total, invoice.currency)}`, rightSideX + 60, dateY + 15);
-
+    doc.font("Helvetica-Bold").fontSize(12).text("SWISS EMBRO PATCHES", rightColX, logoY);
+    logoY += 20;
   }
+
+  doc
+    .font("Helvetica")
+    .fontSize(10)
+    .text("www.swissembropatches.org", rightColX, logoY)
+    .text("accounts@swissembropatches.com", rightColX, logoY + 15)
+    .text("Tel: +44 7782 294 364", rightColX, logoY + 30);
+
+  // Invoice # and Total Due (Before table)
+  const metaY = logoY + 60;
+  const orderNumbersStr = invoice.orders && invoice.orders.length > 0 
+    ? invoice.orders.map(o => o.orderNumber).join(", ") 
+    : invoice.invoiceNumber;
+
+  doc
+    .fontSize(10)
+    .font("Helvetica-Bold").text("Invoice #:", leftColX, metaY)
+    .font("Helvetica").text(orderNumbersStr, leftColX + 55, metaY, { width: 440 })
+    .font("Helvetica-Bold").text("Total Due:", leftColX, metaY + 35)
+    .font("Helvetica").text(`${formatMoney(invoice.total, invoice.currency)}`, leftColX + 55, metaY + 35);
 
   // Table Section
-  let tableTop = billToY + 45;
-  // If consolidated, the right side is taller, so table might need to be pushed down?
-  // In consolidated layout, detailsY ends around 140 + 20 + 40 (logo) + 30 (contact) + 55 (start details) + 45 (details height) = ~330
-  // Default tableTop is 140 + 45 = 185. This will overlap!
-  
-  if (isConsolidated) {
-      tableTop = 350; // Push table down for consolidated view
-  }
+  const tableTop = metaY + 70;
 
   // Table Header
   doc.rect(50, tableTop - 5, 495, 25).fill(black);
-  
   doc.fillColor(yellowTheme).font("Helvetica-Bold").fontSize(10);
   doc.text("DESCRIPTION", 65, tableTop + 2);
   doc.text("QTY", 310, tableTop + 2, { width: 70, align: "center" });
@@ -338,7 +226,7 @@ exports.generateInvoicePDF = async (invoice, customer) => {
   let currentY = tableTop + 25;
   invoice.items.forEach((item, index) => {
     if (index % 2 === 1) {
-        doc.rect(50, currentY - 5, 495, 20).fill(lightGrey);
+      doc.rect(50, currentY - 5, 495, 20).fill(lightGrey);
     }
 
     doc.fillColor(black).font("Helvetica").fontSize(10);
@@ -350,58 +238,56 @@ exports.generateInvoicePDF = async (invoice, customer) => {
     currentY += 20;
   });
 
-  // Summary Totals
-  const footerX = 350;
+  // Summary
+  const summaryX = 350;
+  const summaryValX = 465;
   let summaryY = currentY + 15;
 
-  doc.fillColor(black).font("Helvetica-Bold").fontSize(10).text("Subtotal", footerX, summaryY);
-  doc.font("Helvetica").text(formatMoney(invoice.subtotal || invoice.total, invoice.currency), 465, summaryY, { width: 70, align: "right" });
-  
-  summaryY += 15;
-  doc.fillColor(black).font("Helvetica-Bold").text("Shipping", footerX, summaryY);
-  doc.font("Helvetica").text(formatMoney(0, invoice.currency), 465, summaryY, { width: 70, align: "right" });
+  doc.font("Helvetica-Bold").text("Subtotal", summaryX, summaryY);
+  doc.font("Helvetica").text(formatMoney(invoice.subtotal || invoice.total, invoice.currency), summaryValX, summaryY, { width: 70, align: "right" });
+
+  summaryY += 20;
+  doc.font("Helvetica-Bold").text("Shipping", summaryX, summaryY);
+  doc.font("Helvetica").text("Shipping is included", summaryValX - 65, summaryY, { width: 135, align: "right" });
 
   summaryY += 15;
-  
-  // Total Box
-  doc.rect(348, summaryY, 197, 35).fill(yellowTheme);
-  
-  doc.fillColor(black).font("Helvetica-Bold").fontSize(11);
-  doc.text("TOTAL DUE", footerX, summaryY + 10);
-  doc.fontSize(13).text(`${formatMoney(invoice.total, invoice.currency)} ${invoice.currency || "USD"}`, 420, summaryY + 10, { width: 115, align: "right" });
+  // Total Bar (Full width of the summary area)
+  doc.rect(348, summaryY, 197, 30).fill(yellowTheme);
+  doc.fillColor(black).font("Helvetica-Bold").fontSize(12);
+  doc.text("TOTAL DUE", summaryX + 5, summaryY + 10);
+  doc.text(`${formatMoney(invoice.total, invoice.currency)} ${invoice.currency || "USD"}`, summaryValX - 65, summaryY + 10, { width: 135, align: "right" });
 
-  // combined Notes & Instructions
-  currentY = summaryY + 40;
-  
-  doc.rect(50, currentY, 495, 18).fill(black);
-  doc.fillColor(yellowTheme).font("Helvetica-Bold").fontSize(9).text("IMPORTANT INSTRUCTIONS:", 65, currentY + 4);
-  
-  // Dynamic Phone Number based on country
-  doc.fillColor(black).font("Helvetica").fontSize(8)
-    .text(`Once you have paid the invoice kindly email the proof of payment at accounts@swissembropatches.com OR whatsapp us at (${supportPhone})`, 50, currentY + 22, { width: 495 });
+  // Important Instructions
+  currentY = summaryY + 50;
+  doc.rect(50, currentY, 495, 20).fill(black);
+  doc.fillColor(yellowTheme).font("Helvetica-Bold").fontSize(10).text("IMPORTANT INSTRUCTIONS:", 65, currentY + 5);
+
+  doc
+    .fillColor(black)
+    .font("Helvetica")
+    .fontSize(9)
+    .text("If you want to pay via Bank Transfer our Account number is IT65Y0200810105000107378491 / UniCredit Italy.", 50, currentY + 25)
+    .text(`Once you have paid the invoice kindly email the proof of payment at accounts@swissembropatches.com OR whatsapp us at (+44 7782 294 364).`, 50, currentY + 40, { width: 495 });
 
   if (invoice.notes) {
     doc.moveDown(0.5);
-    doc.fillColor(black).font("Helvetica-Bold").text("NOTES:");
-    doc.font("Helvetica").text(invoice.notes, { width: 495 });
+    doc.font("Helvetica-Bold").text("NOTES:", 50, currentY + 65);
+    doc.font("Helvetica").text(invoice.notes, 50, currentY + 77);
   }
 
-  // Final Footer
+  // Footer
   const pageHeight = doc.page.height;
   
-    // Draw footer background
-    doc.rect(0, pageHeight - 55, doc.page.width, 55).fill(black);
-    
-    // Write text centered
-    doc.fillColor(yellowTheme)
-       .fontSize(10)
-       .font("Helvetica-Bold")
-       .text("THANK YOU FOR CHOOSING SWISSEMBRO PATCHES!", 0, pageHeight - 55, { 
-         align: "center", 
-         width: doc.page.width 
-       });
-  
- 
+  // Positioning footer at bottom but ensuring it doesn't trigger layout break
+  const footerHeight = 40;
+  doc.rect(0, pageHeight - footerHeight, doc.page.width, footerHeight).fill(black);
+  doc.fillColor(black)
+     .fontSize(10)
+     .font("Helvetica-Bold")
+     .text("THANK YOU FOR CHOOSING SWISS EMBRO PATCHES!", 0, pageHeight - 60, { 
+       align: "center", 
+       width: doc.page.width 
+     });
 
   doc.end();
 
