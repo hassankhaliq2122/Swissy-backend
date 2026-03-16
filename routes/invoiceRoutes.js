@@ -348,6 +348,7 @@ router.post("/preview", protect, authorize("admin"), async (req, res) => {
       total: items.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.price || 0)), 0),
       notes,
       dueDate: new Date().toLocaleDateString(),
+      createdAt: new Date(),
     };
 
     const pdfBuffer = await generateInvoicePDF(mockInvoice, customer);

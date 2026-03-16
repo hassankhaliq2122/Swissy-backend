@@ -197,7 +197,8 @@ exports.generateInvoicePDF = async (invoice, customer) => {
     .fontSize(10)
     .text("www.swissembropatches.org", rightColX, logoY)
     .text("accounts@swissembropatches.com", rightColX, logoY + 15)
-    .text("Tel: +44 7782 294 364", rightColX, logoY + 30);
+    .text("Tel: +44 7782 294 364", rightColX, logoY + 30)
+    .text(`Date of creation: ${new Date(invoice.createdAt || Date.now()).toLocaleDateString()}`, rightColX, logoY + 45);
 
   // Invoice # and Total Due (Before table)
   const metaY = logoY + 60;
@@ -338,6 +339,7 @@ exports.sendInvoiceEmail = async (customer, invoice) => {
         <p>Hello <strong>${customer.name}</strong>,</p>
         <p>You have a new invoice from <strong>Swissembro Patches</strong>.</p>
         <p><strong>Total Amount:</strong> ${formatMoney(invoice.total)}</p>
+        <p><strong>Date of creation:</strong> ${new Date(invoice.createdAt || Date.now()).toLocaleDateString()}</p>
         <p style="margin-top: 20px;">
           <a href="${paymentLink}" 
              style="background: #FFDD00; color: #000; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
