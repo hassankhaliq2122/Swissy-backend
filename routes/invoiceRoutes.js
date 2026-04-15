@@ -75,6 +75,11 @@ router.post("/public/pay/:invoiceId", async (req, res) => {
     const invoice = await Invoice.findById(invoiceId).populate("customerId orders");
     if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found" });
 
+    // 0. Check if already paid
+    if (invoice.paymentStatus === "paid") {
+        return res.status(400).json({ success: false, message: "Invoice is already paid" });
+    }
+
     // 1. Verify with PayPal
     const paypalClient = require('../paypalClient');
     const checkoutNodeJssdk = require('@paypal/checkout-server-sdk');
@@ -214,6 +219,11 @@ router.post("/pay/:invoiceId", protect, authorize("customer"), async (req, res) 
 
     const invoice = await Invoice.findById(invoiceId).populate("customerId orders");
     if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found" });
+
+    // 0. Check if already paid
+    if (invoice.paymentStatus === "paid") {
+        return res.status(400).json({ success: false, message: "Invoice is already paid" });
+    }
 
      // 1. Verify with PayPal
     const paypalClient = require('../paypalClient');

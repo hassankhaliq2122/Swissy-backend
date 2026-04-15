@@ -38,6 +38,10 @@ router.post('/capture-order', async (req, res) => {
   try {
     const { orderID, localOrderId } = req.body;
 
+    // ⚠️ SAFETY CHECK: This route is a redundant server-side capture route.
+    // To prevent double-charging with frontend capture, we block this unless explicitly allowed.
+    return res.status(403).json({ message: "Server-side capture is disabled for safety. Use the main invoice payment flow." });
+
     const request = new checkoutNodeJssdk.orders.OrdersCaptureRequest(orderID);
     request.requestBody({});
 
