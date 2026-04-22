@@ -369,6 +369,154 @@ router.get('/:id/pdf', protect, async (req, res) => {
 });
 
 /* ================================
+   GET CUSTOMER REPORTS (Admin)
+   Supports: search, date range filter
+================================ */
+router.get('/customer-reports', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Only admin can access reports' });
+
+    const { q, startDate, endDate } = req.query;
+
+    // Find all customers (optionally filtered by search)
+    let customerQuery = { role: 'customer' };
+    if (q) {
+      const regex = new RegExp(q.trim(), 'i');
+      customerQuery.$or = [{ name: regex }, { email: regex }, { username: regex }, { customerNumber: regex }];
+    }
+
+    const customers = await User.find(customerQuery)
+      .select('_id name email username phone company country customerNumber createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (!customers.length) {
+      return res.json({ success: true, reports: [] });
+    }
+
+    const customerIds = customers.map(c => c._id);
+
+    // Build order query with optional date filter
+    let orderQuery = { customerId: { $in: customerIds } };
+    if (startDate || endDate) {
+      orderQuery.createdAt = {};
+      if (startDate) orderQuery.createdAt.$gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        orderQuery.createdAt.$lte = end;
+      }
+    }
+
+    // Get all orders for these customers
+    const orders = await Order.find(orderQuery)
+      .populate('invoiceId')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Get all invoices for these customers (with optional date filter)
+    let invoiceQuery = { customerId: { $in: customerIds } };
+    if (startDate || endDate) {
+      invoiceQuery.createdAt = {};
+      if (startDate) invoiceQuery.createdAt.$gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        invoiceQuery.createdAt.$lte = end;
+      }
+    }
+    const invoices = await Invoice.find(invoiceQuery).lean();
+
+    // Build report for each customer
+    const reports = customers.map(customer => {
+      const custId = customer._id.toString();
+      const customerOrders = orders.filter(o => o.customerId.toString() === custId);
+      const customerInvoices = invoices.filter(i => i.customerId.toString() === custId);
+
+      // Order type breakdown
+      const ordersByType = { vector: 0, digitizing: 0, patches: 0 };
+      customerOrders.forEach(o => { if (ordersByType[o.orderType] !== undefined) ordersByType[o.orderType]++; });
+
+      // Order status breakdown
+      const ordersByStatus = {};
+      customerOrders.forEach(o => { ordersByStatus[o.status] = (ordersByStatus[o.status] || 0) + 1; });
+
+      // Total quantity
+      let totalQuantity = 0;
+      customerOrders.forEach(order => {
+        if (order.orderType === 'patches') {
+          totalQuantity += order.patchQuantity || 0;
+        } else {
+          (order.items || []).forEach(item => { totalQuantity += item.quantity || 0; });
+        }
+      });
+
+      // Total amount from adminPrice
+      let totalAmount = 0;
+      customerOrders.forEach(order => { totalAmount += order.adminPrice || 0; });
+
+      // Total paid (from invoices with paid status)
+      let totalPaid = 0;
+      let totalUnpaid = 0;
+      customerInvoices.forEach(inv => {
+        if (inv.paymentStatus === 'paid') {
+          totalPaid += inv.total || 0;
+        } else if (inv.paymentStatus === 'unpaid') {
+          totalUnpaid += inv.total || 0;
+        }
+      });
+
+      // Also check order-level invoiceStatus
+      customerOrders.forEach(order => {
+        if (order.invoiceStatus === 'paid' && order.adminPrice) {
+          // Only add if not already counted via invoice
+          const hasMatchingInvoice = customerInvoices.some(inv => 
+            inv.paymentStatus === 'paid' && inv.orders && inv.orders.some(oid => oid.toString() === order._id.toString())
+          );
+          if (!hasMatchingInvoice) {
+            totalPaid += order.adminPrice || 0;
+          }
+        }
+      });
+
+      return {
+        customer,
+        totalOrders: customerOrders.length,
+        totalQuantity,
+        totalAmount: totalAmount.toFixed(2),
+        totalPaid: totalPaid.toFixed(2),
+        totalUnpaid: totalUnpaid.toFixed(2),
+        totalInvoices: customerInvoices.length,
+        ordersByType,
+        ordersByStatus,
+        orders: customerOrders.map(o => ({
+          _id: o._id,
+          orderNumber: o.orderNumber,
+          orderType: o.orderType,
+          designName: o.designName || o.patchDesignName || '-',
+          status: o.status,
+          adminPrice: o.adminPrice || 0,
+          invoiceStatus: o.invoiceStatus || 'pending',
+          patchQuantity: o.patchQuantity || 0,
+          createdAt: o.createdAt,
+          updatedAt: o.updatedAt,
+        }))
+      };
+    });
+
+    // Filter out customers with no orders in the date range (if date filter applied)
+    const filteredReports = (startDate || endDate) 
+      ? reports.filter(r => r.totalOrders > 0)
+      : reports;
+
+    res.json({ success: true, reports: filteredReports, totalCustomers: filteredReports.length });
+  } catch (error) {
+    console.error('❌ Failed to fetch customer reports:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch customer reports', error: error.message });
+  }
+});
+
+/* ================================
    GET CUSTOMER AGGREGATE DATA (Admin)
 ================================ */
 router.get('/customer-aggregate', protect, async (req, res) => {
