@@ -3,25 +3,45 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
-// Helper to fetch image buffer from URL with timeout
+// Helper to fetch image buffer from URL with timeout and security check
 const fetchImageBuffer = (url) => {
     return new Promise((resolve, reject) => {
-        const req = https.get(url, (res) => {
-            if (res.statusCode !== 200) {
-                reject(new Error(`Failed to fetch image: ${res.statusCode}`));
-                return;
-            }
-            const data = [];
-            res.on('data', (chunk) => data.push(chunk));
-            res.on('end', () => resolve(Buffer.concat(data)));
-            res.on('error', (err) => reject(err));
-        });
+        try {
+            const urlObj = new URL(url);
+            
+            // 🛡️ SSRF PROTECTION: Whitelist allowed domains
+            const allowedDomains = [
+                'res.cloudinary.com',
+                'cloudinary.com'
+            ];
+            
+            const isAllowed = allowedDomains.some(domain => 
+                urlObj.hostname === domain || urlObj.hostname.endsWith('.' + domain)
+            );
 
-        req.on('error', (err) => reject(err));
-        req.setTimeout(10000, () => { // 10s timeout
-            req.destroy();
-            reject(new Error('Image fetch timeout'));
-        });
+            if (!isAllowed) {
+                return reject(new Error(`SSRF Blocked: Domain ${urlObj.hostname} is not whitelisted.`));
+            }
+
+            const req = https.get(url, (res) => {
+                if (res.statusCode !== 200) {
+                    reject(new Error(`Failed to fetch image: ${res.statusCode}`));
+                    return;
+                }
+                const data = [];
+                res.on('data', (chunk) => data.push(chunk));
+                res.on('end', () => resolve(Buffer.concat(data)));
+                res.on('error', (err) => reject(err));
+            });
+
+            req.on('error', (err) => reject(err));
+            req.setTimeout(10000, () => { // 10s timeout
+                req.destroy();
+                reject(new Error('Image fetch timeout'));
+            });
+        } catch (err) {
+            reject(new Error('Invalid URL format'));
+        }
     });
 };
 
@@ -106,7 +126,8 @@ exports.generateOrderPDF = async (order) => {
                     doc.fontSize(12).font('Helvetica-Bold').fillColor('black').text(`File: ${file.filename}`);
 
                     // Add clickable link
-                    const fileUrl = isCloudinary ? file.url : `http://localhost:5000${file.url}`;
+                    const baseUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 5000}`;
+                    const fileUrl = isCloudinary ? file.url : `${baseUrl}${file.url}`;
                     doc.fontSize(10).font('Helvetica').fillColor('blue')
                         .text('Download / View File', { link: fileUrl, underline: true });
                     doc.fillColor('black').moveDown();
