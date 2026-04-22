@@ -3,45 +3,25 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
-// Helper to fetch image buffer from URL with timeout and security check
+// Helper to fetch image buffer from URL with timeout
 const fetchImageBuffer = (url) => {
     return new Promise((resolve, reject) => {
-        try {
-            const urlObj = new URL(url);
-            
-            // 🛡️ SSRF PROTECTION: Whitelist allowed domains
-            const allowedDomains = [
-                'res.cloudinary.com',
-                'cloudinary.com'
-            ];
-            
-            const isAllowed = allowedDomains.some(domain => 
-                urlObj.hostname === domain || urlObj.hostname.endsWith('.' + domain)
-            );
-
-            if (!isAllowed) {
-                return reject(new Error(`SSRF Blocked: Domain ${urlObj.hostname} is not whitelisted.`));
+        const req = https.get(url, (res) => {
+            if (res.statusCode !== 200) {
+                reject(new Error(`Failed to fetch image: ${res.statusCode}`));
+                return;
             }
+            const data = [];
+            res.on('data', (chunk) => data.push(chunk));
+            res.on('end', () => resolve(Buffer.concat(data)));
+            res.on('error', (err) => reject(err));
+        });
 
-            const req = https.get(url, (res) => {
-                if (res.statusCode !== 200) {
-                    reject(new Error(`Failed to fetch image: ${res.statusCode}`));
-                    return;
-                }
-                const data = [];
-                res.on('data', (chunk) => data.push(chunk));
-                res.on('end', () => resolve(Buffer.concat(data)));
-                res.on('error', (err) => reject(err));
-            });
-
-            req.on('error', (err) => reject(err));
-            req.setTimeout(10000, () => { // 10s timeout
-                req.destroy();
-                reject(new Error('Image fetch timeout'));
-            });
-        } catch (err) {
-            reject(new Error('Invalid URL format'));
-        }
+        req.on('error', (err) => reject(err));
+        req.setTimeout(10000, () => { // 10s timeout
+            req.destroy();
+            reject(new Error('Image fetch timeout'));
+        });
     });
 };
 

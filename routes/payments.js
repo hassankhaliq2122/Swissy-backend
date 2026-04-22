@@ -5,10 +5,9 @@ const paypalClient = require('../paypalClient');
 const checkoutNodeJssdk = require('@paypal/checkout-server-sdk');
 const Order = require('../models/Order');
 const Invoice = require('../models/Invoice');
-const { protect } = require('../middleware/auth');
 
 // ✅ Create PayPal Order
-router.post('/create-order', protect, async (req, res) => {
+router.post('/create-order', async (req, res) => {
   try {
     const { orderId } = req.body;
     const order = await Order.findById(orderId);
@@ -22,9 +21,7 @@ router.post('/create-order', protect, async (req, res) => {
         amount: {
           currency_code: 'USD',
           value: order.totalAmount.toFixed(2),
-        },
-        description: `Order #${order.orderNumber} - Swissembro Patches`,
-        custom_id: order._id.toString() // 🛡️ Important for webhook tracking
+        }
       }]
     });
 
