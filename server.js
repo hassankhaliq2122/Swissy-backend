@@ -12,9 +12,14 @@ dotenv.config();
 // 🔐 JWT Secret Check
 // ============================
 if (!process.env.JWT_SECRET) {
-  console.error("❌ JWT_SECRET is not set in environment variables!");
-  process.exit(1); // Stop server if secret is missing for security
+  console.warn("⚠️ JWT_SECRET not set, using temporary dev secret.");
+  process.env.JWT_SECRET = "swiss_project_dev_secret_123";
 }
+
+console.log("🔑 JWT Configuration:");
+console.log(`   - Secret: ${process.env.JWT_SECRET ? "Set ✅" : "Missing ❌"}`);
+console.log(`   - Expire: ${process.env.JWT_EXPIRE || "Default (7d)"}`);
+console.log(`   - Time: ${new Date().toISOString()}`);
 
 // ============================
 // 🚀 App & HTTP Server
@@ -27,24 +32,14 @@ app.use(helmet());
 // ============================
 // 🌐 CORS Configuration
 // ============================
-const allowedOrigins = [
-  process.env.FRONTEND_URL,
-  process.env.CUSTOMER_URL,
-  "http://localhost:3000",
-  "http://localhost:5173"
-].filter(Boolean);
-
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl)
+      // Allow requests with no origin (like mobile apps, curl, Postman)
       if (!origin) return callback(null, true);
-      
-      if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
+
+      // ⚠️ DEV MODE: Allow ALL origins to prevent "Network Error"
+      return callback(null, true);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -106,36 +101,27 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 // 🛣️ API Routes
 // ============================
 try {
-  const routes = [
-    { path: "/api/auth", route: "./routes/auth" },
-    { path: "/api/orders", route: "./routes/orders" },
-    { path: "/api/invoices", route: "./routes/invoiceRoutes" },
-    { path: "/api/payments", route: "./routes/payments" },
-    { path: "/api/employees", route: "./routes/employees" },
-    { path: "/api/users", route: "./routes/users" },
-    { path: "/api/notifications", route: "./routes/notifications" },
-    { path: "/api/upload", route: "./routes/upload" },
-    { path: "/api/activity", require: "./routes/activity" },
-    { path: "/api/cloudinary", route: "./routes/cloudinary" },
-    { path: "/api/webhooks", route: "./routes/webhookRoutes" },
-  ];
-
-  routes.forEach((r) => {
-    try {
-      app.use(r.path, require(r.route || r.require));
-    } catch (err) {
-      console.error(`❌ Error loading route ${r.path}:`, err);
-    }
-  });
+  app.use("/api/auth", require("./routes/auth"));
+  app.use("/api/orders", require("./routes/orders"));
+  app.use("/api/invoices", require("./routes/invoiceRoutes"));
+  app.use("/api/payments", require("./routes/payments"));
+  app.use("/api/employees", require("./routes/employees"));
+  app.use("/api/users", require("./routes/users"));
+  app.use("/api/notifications", require("./routes/notifications"));
+  app.use("/api/upload", require("./routes/upload"));
+  app.use("/api/activity", require("./routes/activity"));
+  app.use("/api/cloudinary", require("./routes/cloudinary"));
+  app.use("/api/webhooks", require("./routes/webhookRoutes")); // 🔔 Webhooks
 } catch (err) {
-  console.error("❌ Critical Error in API Routes setup:", err);
+  console.log("error", err);
+  console.error("❌ Error loading routes:", err.message);
 }
 
 // ============================
 // ❤️ Health Check
 // ============================
 app.get("/api/health", (req, res) => {
-  res.json({ status: "OK", message: "Server is running and UPDATED" });
+  res.json({ status: "OK", message: "Server is running" });
 });
 
 // ============================

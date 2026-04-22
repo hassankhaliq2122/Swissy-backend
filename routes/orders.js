@@ -342,21 +342,12 @@ const { generateOrderPDF } = require('../utils/pdfService');
 ================================ */
 router.get('/:id/pdf', protect, async (req, res) => {
   try {
-    console.log(`📥 PDF Request for Order ID: ${req.params.id} by User: ${req.user.email}`);
+    console.log(`📥 PDF Request for Order ID: ${req.params.id}`);
     const order = await Order.findById(req.params.id).populate('customerId', 'name email');
 
     if (!order) {
       console.error(`❌ Order not found: ${req.params.id}`);
       return res.status(404).json({ success: false, message: 'Order not found' });
-    }
-
-    // 🛡️ IDOR PROTECTION: Only owner or admin/employee can access
-    const isOwner = order.customerId?._id.toString() === req.user._id.toString();
-    const isStaff = req.user.role === 'admin' || req.user.role === 'employee';
-
-    if (!isOwner && !isStaff) {
-      console.warn(`⚠️ Unauthorized PDF access attempt by ${req.user.email} for Order ${order.orderNumber}`);
-      return res.status(403).json({ success: false, message: 'Not authorized to access this document' });
     }
 
     console.log(`📄 Generating PDF for order ${order.orderNumber}...`);
