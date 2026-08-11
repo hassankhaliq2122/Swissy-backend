@@ -35,8 +35,8 @@ function getPayPalEnvironment(clientId, clientSecret) {
  * @returns {object} PayPal client
  */
 function getUSAPayPalClient() {
-    const clientId = process.env.PAYPAL_US_CLIENT_ID;
-    const clientSecret = process.env.PAYPAL_US_CLIENT_SECRET;
+    const clientId = process.env.PAYPAL_US_CLIENT_ID || process.env.PAYPAL_CLIENT_ID || process.env.PAYPAL_CLIENT_ID_USA;
+    const clientSecret = process.env.PAYPAL_US_CLIENT_SECRET || process.env.PAYPAL_CLIENT_SECRET || process.env.PAYPAL_CLIENT_SECRET_USA;
 
     if (!clientId || !clientSecret) {
         throw new Error('USA PayPal credentials not configured. Check PAYPAL_US_CLIENT_ID and PAYPAL_US_CLIENT_SECRET in .env');
@@ -51,8 +51,8 @@ function getUSAPayPalClient() {
  * @returns {object} PayPal client
  */
 function getEuropePayPalClient() {
-    const clientId = process.env.PAYPAL_EU_CLIENT_ID;
-    const clientSecret = process.env.PAYPAL_EU_CLIENT_SECRET;
+    const clientId = process.env.PAYPAL_EU_CLIENT_ID || process.env.PAYPAL_CLIENT_ID_EU;
+    const clientSecret = process.env.PAYPAL_EU_CLIENT_SECRET || process.env.PAYPAL_SECRET_EU;
 
     if (!clientId || !clientSecret) {
         throw new Error('Europe PayPal credentials not configured. Check PAYPAL_EU_CLIENT_ID and PAYPAL_EU_CLIENT_SECRET in .env');
@@ -198,12 +198,44 @@ async function capturePayPalOrder(orderId, countryCode) {
 }
 
 // ================================
+// VERIFY PAYPAL ORDER DETAILS
+// ================================
+
+/**
+ * Verify a PayPal order details using the appropriate account client
+ * 
+ * @param {string} orderId - PayPal order ID
+ * @param {string} [countryCode] - Customer country code
+ * @returns {Promise<object>} Executed order result
+ */
+async function verifyPayPalOrder(orderId, countryCode = 'US') {
+    const request = new paypal.orders.OrdersGetRequest(orderId);
+    
+    // Try primary client based on country
+    try {
+        const client = getPayPalClientForCountry(countryCode);
+        return await client.execute(request);
+    } catch (primaryErr) {
+        console.warn(`Primary PayPal client failed for order ${orderId}, trying secondary client fallback...`);
+        // Fallback to secondary client in case order was created on the other account
+        const secondaryClient = isUSACountry(countryCode) ? getEuropePayPalClient() : getUSAPayPalClient();
+        try {
+            return await secondaryClient.execute(request);
+        } catch (secondaryErr) {
+            console.error('❌ Both PayPal clients failed to verify order:', secondaryErr);
+            throw primaryErr;
+        }
+    }
+}
+
+// ================================
 // EXPORTS
 // ================================
 
 module.exports = {
     createPayPalOrder,
     capturePayPalOrder,
+    verifyPayPalOrder,
     getPayPalClientForCountry,
     isUSACountry
 };

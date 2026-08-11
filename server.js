@@ -8,6 +8,14 @@ const path = require("path");
 
 dotenv.config();
 
+// Fix Windows DNS SRV lookup issues for MongoDB Atlas
+const dns = require("dns");
+try {
+  dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"]);
+} catch (e) {
+  console.warn("DNS server setup warning:", e.message);
+}
+
 // ============================
 // 🔐 JWT Secret Check
 // ============================

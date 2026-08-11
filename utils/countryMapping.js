@@ -4,7 +4,41 @@
  * Maps country names to ISO country codes for PayPal routing
  */
 
-const COUNTRIES = require('../../../swissy-admin/src/utils/currencyHelper').COUNTRIES;
+const COUNTRIES = [
+    { name: "Austria", code: "AT" },
+    { name: "Belgium", code: "BE" },
+    { name: "Bulgaria", code: "BG" },
+    { name: "Croatia", code: "HR" },
+    { name: "Cyprus", code: "CY" },
+    { name: "Czech Republic", code: "CZ" },
+    { name: "Denmark", code: "DK" },
+    { name: "Estonia", code: "EE" },
+    { name: "Finland", code: "FI" },
+    { name: "France", code: "FR" },
+    { name: "Germany", code: "DE" },
+    { name: "Greece", code: "GR" },
+    { name: "Hungary", code: "HU" },
+    { name: "Ireland", code: "IE" },
+    { name: "Italy", code: "IT" },
+    { name: "Latvia", code: "LV" },
+    { name: "Lithuania", code: "LT" },
+    { name: "Luxembourg", code: "LU" },
+    { name: "Malta", code: "MT" },
+    { name: "Netherlands", code: "NL" },
+    { name: "Poland", code: "PL" },
+    { name: "Portugal", code: "PT" },
+    { name: "Romania", code: "RO" },
+    { name: "Slovakia", code: "SK" },
+    { name: "Slovenia", code: "SI" },
+    { name: "Spain", code: "ES" },
+    { name: "Sweden", code: "SE" },
+    { name: "United Kingdom", code: "GB" },
+    { name: "Norway", code: "NO" },
+    { name: "Switzerland", code: "CH" },
+    { name: "Iceland", code: "IS" },
+    { name: "USA", code: "US" },
+    { name: "United States", code: "US" }
+];
 
 /**
  * Get ISO country code from country name
@@ -13,6 +47,11 @@ const COUNTRIES = require('../../../swissy-admin/src/utils/currencyHelper').COUN
  */
 function getCountryCode(countryName) {
     if (!countryName) return 'US';
+
+    // If it's already a 2-letter ISO country code
+    if (countryName.trim().length === 2) {
+        return countryName.trim().toUpperCase();
+    }
 
     // Direct mapping for common variations
     const directMappings = {
@@ -28,8 +67,8 @@ function getCountryCode(countryName) {
         return directMappings[countryName];
     }
 
-    // Try to find in COUNTRIES array
-    const country = COUNTRIES.find(c => c.name === countryName);
+    // Try to find in COUNTRIES array by name or code
+    const country = COUNTRIES.find(c => c.name.toLowerCase() === countryName.toLowerCase() || c.code.toLowerCase() === countryName.toLowerCase());
     return country ? country.code : 'US';
 }
 

@@ -81,11 +81,10 @@ router.post("/public/pay/:invoiceId", async (req, res) => {
     }
 
     // 1. Verify with PayPal
-    const paypalClient = require('../paypalClient');
-    const checkoutNodeJssdk = require('@paypal/checkout-server-sdk');
-
-    const request = new checkoutNodeJssdk.orders.OrdersGetRequest(transactionId);
-    const order = await paypalClient.execute(request);
+    const countryData = require('../utils/countryMapping');
+    const { verifyPayPalOrder } = require('../services/paypalService');
+    const countryCode = countryData.getCountryCode(invoice.country || invoice.customerId?.country) || 'US';
+    const order = await verifyPayPalOrder(transactionId, countryCode);
     
     // 2. Check Status
     if (order.result.status !== 'COMPLETED') {
@@ -226,11 +225,10 @@ router.post("/pay/:invoiceId", protect, authorize("customer"), async (req, res) 
     }
 
      // 1. Verify with PayPal
-    const paypalClient = require('../paypalClient');
-    const checkoutNodeJssdk = require('@paypal/checkout-server-sdk');
-
-    const request = new checkoutNodeJssdk.orders.OrdersGetRequest(transactionId);
-    const order = await paypalClient.execute(request);
+    const countryData = require('../utils/countryMapping');
+    const { verifyPayPalOrder } = require('../services/paypalService');
+    const countryCode = countryData.getCountryCode(invoice.country || invoice.customerId?.country) || 'US';
+    const order = await verifyPayPalOrder(transactionId, countryCode);
     
     // 2. Check Status
     if (order.result.status !== 'COMPLETED') {
