@@ -1,3 +1,69 @@
+📌 Overview
+
+Swissy Backend is a full-stack REST API built with Node.js, Express.js, and MongoDB that powers the SwissEmbro Patches order management ecosystem.
+
+The backend serves both the Customer Portal and Admin Dashboard, providing a centralized system for:
+
+🔐 Authentication & role-based authorization
+📦 Order management and workflow processing
+👥 Customer and employee management
+🧾 Invoice generation
+💳 PayPal payments and webhooks
+📧 Transactional email delivery
+📄 Server-side PDF generation
+☁️ File uploads and cloud storage
+🔔 Real-time notifications with Socket.IO
+📊 Employee activity tracking
+👥 User Roles
+Role	Responsibilities
+👤 Customer	Place orders, view orders, manage invoices
+🧑‍💻 Employee	Process assigned orders and submit completed work
+👑 Admin	Manage users, orders, employees, invoices and system operations
+✨ Key Features
+🔐 JWT authentication with role-based and granular permissions
+📦 Multi-type order management for Digitizing, Vector and Patches
+🔄 Complete order status and revision workflows
+👥 Employee assignment and permission management
+🧾 Single and consolidated invoice generation
+💳 PayPal checkout and webhook processing
+📄 Dynamic PDF invoice generation with PDFKit
+📧 Transactional emails through Resend
+☁️ Cloudinary and UploadThing file management
+🔔 Real-time user notifications using Socket.IO
+📊 Employee activity and session tracking
+🛡️ Helmet, CORS, validation and centralized error handling
+🏗️ Architecture
+                    ┌─────────────────────┐
+                    │   Customer Portal   │
+                    └──────────┬──────────┘
+                               │
+                               │ REST API
+                               │
+                    ┌──────────▼──────────┐
+                    │                     │
+                    │   Swissy Backend    │
+                    │                     │
+                    │ Node.js + Express   │
+                    │                     │
+                    └──────┬──────┬───────┘
+                           │      │
+             ┌─────────────┘      └──────────────┐
+             │                                   │
+      ┌──────▼──────┐                     ┌──────▼──────┐
+      │   MongoDB   │                     │  Socket.IO  │
+      │   Database  │                     │ Real-time   │
+      └─────────────┘                     └─────────────┘
+             │
+             │
+      ┌──────▼──────────────────────────────────────┐
+      │ External Services                            │
+      │ PayPal · Resend · Cloudinary · UploadThing │
+      └──────────────────────────────────────────────┘
+                           │
+                    ┌──────▼──────┐
+                    │ Admin Portal│
+                    └─────────────┘
+
 # ⚙️ Swissy Backend
 
 ### A Robust RESTful API Server Powering the Swissembro Patches Order Management Ecosystem
