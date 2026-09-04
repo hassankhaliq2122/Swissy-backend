@@ -3,7 +3,7 @@
 Swissy Backend is a full-stack REST API built with Node.js, Express.js, and MongoDB that powers the SwissEmbro Patches order management ecosystem.
 
 The backend serves both the Customer Portal and Admin Dashboard, providing a centralized system for:
-
+```
 🔐 Authentication & role-based authorization
 📦 Order management and workflow processing
 👥 Customer and employee management
@@ -32,7 +32,8 @@ Role	Responsibilities
 🔔 Real-time user notifications using Socket.IO
 📊 Employee activity and session tracking
 🛡️ Helmet, CORS, validation and centralized error handling
-```🏗️ Architecture
+
+🏗️ Architecture
                     ┌─────────────────────┐
                     │   Customer Portal   │
                     └──────────┬──────────┘
