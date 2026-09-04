@@ -32,7 +32,7 @@ Role	Responsibilities
 🔔 Real-time user notifications using Socket.IO
 📊 Employee activity and session tracking
 🛡️ Helmet, CORS, validation and centralized error handling
-🏗️ Architecture
+```🏗️ Architecture
                     ┌─────────────────────┐
                     │   Customer Portal   │
                     └──────────┬──────────┘
@@ -63,7 +63,7 @@ Role	Responsibilities
                     ┌──────▼──────┐
                     │ Admin Portal│
                     └─────────────┘
-
+```
 # ⚙️ Swissy Backend
 
 ### A Robust RESTful API Server Powering the Swissembro Patches Order Management Ecosystem
